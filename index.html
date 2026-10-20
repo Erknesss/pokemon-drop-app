@@ -179,8 +179,10 @@
     function header() {
       const reqs = (d.p || []).filter((r) => r.e > Date.now());
       return [
-        el("header", {}, el("div", { class: "logo" }, "⚡"), el("div", {}, el("h1", {}, "Mon tableau"), el("div", { class: "sub" }, `${d.n ? d.n + " · " : ""}mis à jour ${ago(d.at)}`))),
-        Date.now() - d.at > 30 * 60000 ? el("p", { class: "old" }, "Tableau d'il y a plus de 30 min : envoie /tableau à ton bot pour le rafraîchir.") : null,
+        // « 🔄 Actualiser » (2026-10-21) : l'extension renvoie tout de suite un bouton « Mon tableau » neuf (1 à 2 s), à rouvrir.
+        el("header", {}, el("div", { class: "logo" }, "⚡"), el("div", { class: "grow" }, el("h1", {}, "Mon tableau"), el("div", { class: "sub" }, `${d.n ? d.n + " · " : ""}mis à jour ${ago(d.at)}`)),
+          el("button", { class: "chip", title: "Demander un tableau neuf à ton extension", onclick: () => send({ a: "refresh" }) }, "🔄 Actualiser")),
+        Date.now() - d.at > 10 * 60000 ? el("p", { class: "old" }, `Tableau d'il y a ${ago(d.at).replace("il y a ", "")} : « 🔄 Actualiser » puis rouvre « Mon tableau ».`) : null,
         el("div", { class: "chips" },
           el("span", { class: `chip ${d.on ? "ok" : "warn"}` }, d.on ? "● Surveillance active" : "⏸ En pause"),
           d.v === true ? el("span", { class: "chip ok" }, "🔓 Coffre ouvert")
