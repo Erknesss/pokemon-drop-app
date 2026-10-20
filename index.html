@@ -5,56 +5,90 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Pokemon Drop Assistant</title>
   <!--
-    MINI APP TELEGRAM de Pokemon Drop Assistant (2026-10-20). Page FIXE, sans serveur et sans aucune donnée : l'extension de chaque personne met son tableau (demandes
-    d'achat, offres achetables à son prix, suivis) dans le LIEN du bouton « Mon tableau » (partie après #, qui ne quitte jamais le téléphone : elle n'est envoyée à aucun
-    serveur). Les choix (Acheter, Refuser, Pause) repartent au bot de la personne par Telegram (sendData), que son extension lit. Aucun jeton, aucun appel réseau à part
-    le script officiel de Telegram et les photos des produits.
+    MINI APP TELEGRAM de Pokemon Drop Assistant (2026-10-20, v2). Page FIXE, sans serveur et sans aucune donnée : l'extension de chaque personne met son tableau (demandes
+    d'achat, offres achetables à son prix, suivis, sorties, réglages) dans le LIEN du bouton « Mon tableau » (partie après #, qui ne quitte jamais le téléphone : elle n'est
+    envoyée à aucun serveur). Les choix repartent au bot de la personne par Telegram (sendData), que son extension lit. La phrase du coffre est CHIFFRÉE ici pour l'extension
+    seule (ECDH P-256 + AES-GCM) : Telegram ne voit qu'un texte illisible. Aucun jeton, aucun appel réseau à part le script officiel de Telegram et les photos des produits.
   -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg: var(--tg-theme-bg-color, #ffffff); --text: var(--tg-theme-text-color, #1a1c22); --hint: var(--tg-theme-hint-color, #7a808c);
-      --card: var(--tg-theme-secondary-bg-color, #f2f3f6); --link: var(--tg-theme-link-color, #2a7de1); --btn: var(--tg-theme-button-color, #2a7de1);
-      --btn-text: var(--tg-theme-button-text-color, #ffffff); --ok: #1f9d55; --no: #d64545; --warn: #c27c0e;
+      --bg: var(--tg-theme-bg-color, #ffffff); --text: var(--tg-theme-text-color, #16181d); --hint: var(--tg-theme-hint-color, #7a808c);
+      --card: var(--tg-theme-secondary-bg-color, #f1f2f5); --link: var(--tg-theme-link-color, #2a7de1); --btn: var(--tg-theme-button-color, #2a7de1);
+      --btn-text: var(--tg-theme-button-text-color, #ffffff); --line: color-mix(in srgb, var(--hint) 22%, transparent);
+      --ok: #1f9d55; --no: #d64545; --warn: #d4860b; --info: #2a7de1; --mute: #8a909c;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
-    main { padding: 14px 14px 90px; max-width: 640px; margin: 0 auto; }
-    header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    header .logo { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg, #ffcb05, #e3350d); display: grid; place-items: center; font-size: 20px; }
-    header h1 { font-size: 17px; margin: 0; }
+    main { padding: 0 14px 96px; max-width: 640px; margin: 0 auto; }
+    header { display: flex; align-items: center; gap: 11px; padding: 14px 0 10px; }
+    .logo { width: 40px; height: 40px; border-radius: 13px; background: linear-gradient(135deg, #ffcb05, #e3350d); display: grid; place-items: center; font-size: 21px; flex: none; box-shadow: 0 2px 8px #e3350d33; }
+    header h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
     header .sub { font-size: 12px; color: var(--hint); }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
-    .chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--card); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+    .chip { font-size: 12px; font-weight: 650; padding: 5px 10px; border-radius: 999px; background: var(--card); border: 0; color: var(--text); font-family: inherit; }
     .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.no { color: var(--no); }
-    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--hint); margin: 18px 4px 8px; }
-    .card { background: var(--card); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
+    button.chip { cursor: pointer; } button.chip.warn { background: color-mix(in srgb, var(--warn) 14%, var(--card)); }
+    .tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; padding: 6px 0 10px; }
+    .tabs button { flex: 1; font: inherit; font-size: 14px; font-weight: 650; padding: 9px 6px; border: 0; border-radius: 11px; background: var(--card); color: var(--hint); cursor: pointer; position: relative; }
+    .tabs button.on { background: var(--btn); color: var(--btn-text); }
+    .tabs .dot { position: absolute; top: 5px; right: 8px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--no); color: #fff; font-size: 10px; line-height: 16px; padding: 0 4px; }
+    h2 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--hint); margin: 18px 4px 8px; display: flex; justify-content: space-between; align-items: baseline; }
+    h2 small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+    .card { background: var(--card); border-radius: 15px; padding: 12px; margin-bottom: 9px; }
+    .req { border: 2px solid color-mix(in srgb, var(--ok) 45%, transparent); }
     .req .title { font-weight: 700; margin-bottom: 2px; }
     .req .meta { color: var(--hint); font-size: 13px; margin-bottom: 10px; }
-    .row { display: flex; gap: 8px; }
-    button { font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 11px 12px; flex: 1; cursor: pointer; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    button.big { font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 11px 12px; flex: 1; cursor: pointer; }
     button.buy { background: var(--ok); color: #fff; } button.no { background: transparent; color: var(--no); border: 2px solid var(--no); }
-    button.ghost { background: var(--card); color: var(--text); }
-    .offer { display: flex; gap: 12px; align-items: center; text-decoration: none; color: inherit; }
-    .offer img, .offer .ph { width: 64px; height: 64px; border-radius: 10px; object-fit: contain; background: #fff; flex: none; }
-    .offer .ph { display: grid; place-items: center; font-size: 26px; }
-    .offer .t { font-weight: 600; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .offer .p { font-weight: 800; font-size: 16px; margin-top: 2px; }
-    .offer .m { font-size: 12px; color: var(--hint); }
-    .pre { font-size: 11px; font-weight: 700; color: var(--warn); margin-left: 6px; }
+    button.ghost { background: var(--card); color: var(--text); } button.main { background: var(--btn); color: var(--btn-text); }
+    button.small { font: inherit; font-size: 13px; font-weight: 700; border: 0; border-radius: 10px; padding: 7px 11px; cursor: pointer; white-space: nowrap; }
+    .item { display: flex; gap: 12px; align-items: center; }
+    .thumb { width: 60px; height: 60px; border-radius: 11px; object-fit: contain; background: #fff; flex: none; }
+    div.thumb { display: grid; place-items: center; font-size: 25px; background: color-mix(in srgb, var(--hint) 12%, var(--bg)); }
+    .grow { flex: 1; min-width: 0; }
+    .t { font-weight: 600; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .p { font-weight: 800; font-size: 16px; margin-top: 2px; }
+    .m { font-size: 12px; color: var(--hint); }
+    a.m { color: var(--link); text-decoration: none; }
+    .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; margin-right: 6px; vertical-align: 1px; }
+    .pill.I { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); } .pill.P { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+    .pill.S { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); } .pill.O, .pill.U { background: color-mix(in srgb, var(--mute) 16%, transparent); color: var(--mute); }
     .empty { color: var(--hint); text-align: center; padding: 18px 8px; }
-    .stats { display: flex; gap: 10px; }
-    .stat { flex: 1; text-align: center; }
-    .stat b { display: block; font-size: 22px; }
-    .stat span { font-size: 12px; color: var(--hint); }
-    .foot { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--card); }
+    .stats { display: flex; gap: 8px; }
+    .stat { flex: 1; text-align: center; background: var(--card); border-radius: 15px; padding: 12px 6px; }
+    .stat b { display: block; font-size: 23px; letter-spacing: -.02em; } .stat span { font-size: 12px; color: var(--hint); }
+    .rel { display: flex; justify-content: space-between; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
+    .rel:last-child { border-bottom: 0; } .rel b { font-weight: 600; } .rel span { color: var(--hint); font-size: 13px; white-space: nowrap; }
+    .filters { display: flex; gap: 6px; margin: 0 0 10px; overflow-x: auto; }
+    .filters button { font: inherit; font-size: 13px; font-weight: 650; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; white-space: nowrap; }
+    .filters button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+    .follow .ctl { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .follow.off .item { opacity: .55; }
+    .follow.dirty { outline: 2px solid var(--btn); }
+    .max { display: flex; align-items: center; gap: 6px; flex: 1; font-size: 13px; color: var(--hint); }
+    input.euro { width: 82px; font: inherit; font-size: 15px; font-weight: 700; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--text); text-align: right; }
+    .switch { position: relative; width: 46px; height: 28px; flex: none; }
+    .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .switch span { position: absolute; inset: 0; border-radius: 14px; background: color-mix(in srgb, var(--mute) 45%, transparent); transition: background .15s; cursor: pointer; }
+    .switch span::after { content: ""; position: absolute; width: 22px; height: 22px; top: 3px; left: 3px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0003; transition: transform .15s; }
+    .switch input:checked + span { background: var(--ok); } .switch input:checked + span::after { transform: translateX(18px); }
+    .set { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
+    .set:last-child { border-bottom: 0; } .set .grow b { display: block; font-weight: 600; } .set .grow span { font-size: 12.5px; color: var(--hint); }
+    .card.list { padding: 2px 12px; }
+    .foot { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); z-index: 6; }
     .foot .row { max-width: 640px; margin: 0 auto; }
-    .old { color: var(--warn); font-size: 12px; text-align: center; margin: 4px 0 10px; }
+    .old { color: var(--warn); font-size: 12.5px; text-align: center; margin: -4px 0 10px; }
+    .sheet { position: fixed; inset: 0; background: #0007; display: grid; align-items: end; z-index: 9; }
+    .sheet > div { background: var(--bg); border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); max-width: 640px; width: 100%; margin: 0 auto; }
+    .sheet h3 { margin: 0 0 6px; font-size: 17px; } .sheet p { margin: 0 0 12px; color: var(--hint); font-size: 13px; }
+    .sheet input { width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); margin-bottom: 12px; }
   </style>
 </head>
 <body>
   <main id="app"><p class="empty">Chargement…</p></main>
-  <div class="foot" id="foot" hidden><div class="row"><button class="ghost" id="pause"></button></div></div>
+  <div class="foot" id="foot" hidden><div class="row" id="footRow"></div></div>
   <script>
     "use strict";
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -62,19 +96,36 @@
     const app = document.getElementById("app");
     const el = (tag, attrs, ...children) => {
       const node = document.createElement(tag);
-      for (const [k, v] of Object.entries(attrs || {})) { if (v === null || v === undefined || v === false) continue; if (k === "class") node.className = v; else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v); }
+      for (const [k, v] of Object.entries(attrs || {})) {
+        if (v === null || v === undefined || v === false) continue;
+        if (k === "class") node.className = v; else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else if (k === "checked" || k === "value") node[k] = v; else node.setAttribute(k, v);
+      }
       for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : String(c));
       return node;
     };
     const euros = (cents) => (cents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+    const typed = (cents) => (cents / 100).toFixed(2).replace(".", ",").replace(",00", "");
     const ago = (at) => { const min = Math.round((Date.now() - at) / 60000); return min < 1 ? "à l'instant" : min < 60 ? `il y a ${min} min` : `il y a ${Math.round(min / 60)} h`; };
+    const haptic = (kind) => { try { tg && tg.HapticFeedback && (kind === "select" ? tg.HapticFeedback.selectionChanged() : tg.HapticFeedback.impactOccurred(kind)); } catch (e) { /* sans vibreur */ } };
+    // Ouvert depuis un bouton du CLAVIER (seul cas où Telegram transmet le choix au bot) : initData y est vide, la plateforme, elle, est connue.
+    const canSend = () => !!(tg && typeof tg.sendData === "function" && tg.platform && tg.platform !== "unknown");
     /** Un choix renvoyé au bot de la personne (lu par son extension). L'appli se ferme ensuite. */
     const send = (action) => {
-      // Ouvert depuis un bouton du CLAVIER (seul cas où Telegram transmet le choix au bot) : initData y est vide, la plateforme, elle, est connue.
-      if (tg && typeof tg.sendData === "function" && tg.platform && tg.platform !== "unknown") { tg.HapticFeedback && tg.HapticFeedback.impactOccurred("medium"); tg.sendData(JSON.stringify(action)); }
-      else alert("Ouvre « Mon tableau » depuis le bouton en bas de ta conversation avec ton bot : c'est lui qui transmet ton choix.");
+      if (!canSend()) { alert("Ouvre « Mon tableau » depuis le bouton en bas de ta conversation avec ton bot : c'est lui qui transmet ton choix."); return; }
+      haptic("medium");
+      tg.sendData(JSON.stringify(action));
     };
+    const confirmThen = (text, then) => { if (tg && typeof tg.showConfirm === "function" && tg.platform !== "unknown") tg.showConfirm(text, (ok) => ok && then()); else if (confirm(text)) then(); };
     const open = (url) => { if (/^https:\/\//.test(url)) { if (tg) tg.openLink(url); else window.open(url, "_blank", "noopener"); } };
+    const thumb = (src) => {
+      const ph = () => el("div", { class: "thumb" }, "🎴");
+      if (!src) return ph();
+      // Une photo que le marchand refuse de montrer hors de son site : la vignette de remplacement.
+      return el("img", { class: "thumb", src, alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: (e) => e.target.replaceWith(ph()) });
+    };
+    const STATE = { I: "En stock", P: "Précommande", S: "Bientôt", O: "Épuisé", U: "Inconnu" };
+    const ALERTS = [["En stock", "retour en stock"], ["Précommande", "précommande ouverte"], ["Baisse de prix", "un produit suivi baisse"], ["Bientôt disponible", "fiche annoncée"], ["Épuisé", "plus en stock"], ["Blocage à résoudre", "captcha ou accès limité"]];
+    const parseEuros = (text) => { const t = text.trim().replace(/\s|€/g, "").replace(",", "."); if (t === "") return null; const n = Number(t); return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 100) : undefined; };
 
     async function decode(hash) {
       const raw = new URLSearchParams(hash.replace(/^#/, "")).get("d");
@@ -88,45 +139,180 @@
       } else text = new TextDecoder().decode(bytes);
       return JSON.parse(text);
     }
+    const b64u = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const fromB64u = (text) => { const b = text.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(b + "===".slice((b.length + 3) % 4)), (c) => c.charCodeAt(0)); };
+    /** La phrase du coffre chiffrée pour l'extension seule : clé jetable + clé publique de l'extension → clé commune → AES-GCM. */
+    async function seal(key, passphrase) {
+      const mine = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey"]);
+      const theirs = await crypto.subtle.importKey("raw", fromB64u(key.pub), { name: "ECDH", namedCurve: "P-256" }, false, []);
+      const aes = await crypto.subtle.deriveKey({ name: "ECDH", public: theirs }, mine.privateKey, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const c = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aes, new TextEncoder().encode(JSON.stringify({ p: passphrase, t: Date.now() }))));
+      return { a: "unlock", k: key.id, e: b64u(new Uint8Array(await crypto.subtle.exportKey("raw", mine.publicKey))), iv: b64u(iv), c: b64u(c) };
+    }
 
-    function render(d) {
-      const age = Date.now() - d.at;
+    // --- État de la page --------------------------------------------------------------------------------------------------------
+    let d = null;
+    let tab = "home";
+    let filter = "all";
+    /** Les changements pas encore envoyés : un seul envoi pour tout (l'appli se ferme après un envoi). */
+    const changes = { follow: new Map(), max: new Map(), set: {} };
+    const changeCount = () => changes.follow.size + changes.max.size + Object.keys(changes.set).length;
+    const settingOf = (key) => (key in changes.set ? changes.set[key] : d.g ? d.g[key] : undefined);
+
+    function unlockSheet() {
+      const input = el("input", { type: "password", placeholder: "Phrase du coffre", autocomplete: "off", enterkeyhint: "send" });
+      const go = async () => {
+        if (input.value === "") return;
+        try { send(await seal(d.k, input.value)); } catch (e) { alert(`Chiffrement impossible : ${e.message}`); }
+      };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+      const sheet = el("div", { class: "sheet", onclick: (e) => { if (e.target === sheet) sheet.remove(); } }, el("div", {},
+        el("h3", {}, "🔓 Ouvrir le coffre"),
+        el("p", {}, "Ta phrase est chiffrée ici, sur ton téléphone, pour ton extension seule : Telegram ne voit qu'un texte illisible. L'ordinateur doit être allumé."),
+        input,
+        el("div", { class: "row" }, el("button", { class: "big ghost", onclick: () => sheet.remove() }, "Annuler"), el("button", { class: "big main", onclick: go }, "Ouvrir"))));
+      document.body.append(sheet);
+      setTimeout(() => input.focus(), 50);
+    }
+
+    function header() {
       const reqs = (d.p || []).filter((r) => r.e > Date.now());
-      app.replaceChildren(...[
+      return [
         el("header", {}, el("div", { class: "logo" }, "⚡"), el("div", {}, el("h1", {}, "Mon tableau"), el("div", { class: "sub" }, `${d.n ? d.n + " · " : ""}mis à jour ${ago(d.at)}`))),
-        age > 30 * 60000 ? el("p", { class: "old" }, "Tableau d'il y a plus de 30 min : envoie /tableau à ton bot pour le rafraîchir.") : null,
+        Date.now() - d.at > 30 * 60000 ? el("p", { class: "old" }, "Tableau d'il y a plus de 30 min : envoie /tableau à ton bot pour le rafraîchir.") : null,
         el("div", { class: "chips" },
-          el("span", { class: `chip ${d.on ? "ok" : "warn"}` }, d.on ? "● Surveillance active" : "⏸ Surveillance en pause"),
-          d.v === true ? el("span", { class: "chip ok" }, "🔓 Coffre ouvert") : d.v === false ? el("span", { class: "chip warn" }, "🔒 Coffre fermé") : null,
+          el("span", { class: `chip ${d.on ? "ok" : "warn"}` }, d.on ? "● Surveillance active" : "⏸ En pause"),
+          d.v === true ? el("span", { class: "chip ok" }, "🔓 Coffre ouvert")
+            : d.v === false ? (d.k ? el("button", { class: "chip warn", onclick: unlockSheet }, "🔒 Coffre fermé · Ouvrir") : el("span", { class: "chip warn" }, "🔒 Coffre fermé")) : null,
           (d.b || 0) > 0 ? el("span", { class: "chip no" }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""}`) : null),
-        reqs.length > 0 ? el("h2", {}, `🛒 Demandes d'achat (${reqs.length})`) : null,
+        el("nav", { class: "tabs" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["settings", "Réglages", 0]].map(([id, label, n]) =>
+          el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
+      ];
+    }
+
+    function home() {
+      const reqs = (d.p || []).filter((r) => r.e > Date.now());
+      const offers = d.o || [];
+      return [
+        reqs.length > 0 ? el("h2", {}, `🛒 Demandes d'achat`, el("small", {}, `${reqs.length}`)) : null,
         ...reqs.map((r) => el("div", { class: "card req" },
           el("div", { class: "title" }, r.t),
           el("div", { class: "meta" }, `${r.m}${r.pr ? " · " + r.pr : ""} · réponds dans ${Math.max(1, Math.round((r.e - Date.now()) / 60000))} min`),
           el("div", { class: "row" },
-            el("button", { class: "buy", onclick: () => send({ a: "buy", id: r.i }) }, "✅ Acheter"),
-            el("button", { class: "no", onclick: () => send({ a: "refuse", id: r.i }) }, "❌ Refuser")))),
+            el("button", { class: "big buy", onclick: () => send({ a: "buy", id: r.i }) }, "✅ Acheter"),
+            el("button", { class: "big no", onclick: () => send({ a: "refuse", id: r.i }) }, "❌ Refuser")))),
         el("h2", {}, "🔥 Achetable maintenant à ton prix"),
-        (d.o || []).length === 0 ? el("div", { class: "card empty" }, "Rien en stock dans ton budget pour l'instant.") : null,
-        ...(d.o || []).map((o) => el("div", { class: "card" }, el("a", { class: "offer", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } },
-          o.img ? el("img", { src: o.img, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("div", { class: "ph" }, "🎴"),
-          el("div", {}, el("div", { class: "t" }, o.t), el("div", { class: "p" }, euros(o.c), o.pre ? el("span", { class: "pre" }, "PRÉCOMMANDE") : null),
-            el("div", { class: "m" }, `${o.m}${o.k > 1 ? ` · ${o.k} offres` : ""}`))))),
-        el("h2", {}, "📦 Mes suivis"),
-        el("div", { class: "card stats" },
-          el("div", { class: "stat" }, el("b", {}, d.s ? d.s.f : 0), el("span", {}, "suivis")),
+        offers.length === 0 ? el("div", { class: "card empty" }, "Rien en stock dans ton budget pour l'instant.") : null,
+        ...offers.map((o) => el("div", { class: "card" }, el("div", { class: "item" },
+          thumb(o.img),
+          el("div", { class: "grow" },
+            el("div", { class: "t" }, o.t),
+            el("div", { class: "p" }, o.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, euros(o.c)),
+            el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, `${o.m}${o.k > 1 ? ` · ${o.k} offres` : ""} · voir la page ›`)),
+          o.w ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(o.c)} chez ${o.m} ? Ton extension lance l'achat tout de suite (mêmes garde-fous qu'un ✅).`, () => send({ a: "buyNow", w: o.w })) }, "⚡ Acheter") : null))),
+        (d.r || []).length > 0 ? el("h2", {}, "📅 Prochaines sorties guettées") : null,
+        (d.r || []).length > 0 ? el("div", { class: "card list" }, ...d.r.map((r) => {
+          const days = Math.round((r.d - new Date().setHours(0, 0, 0, 0)) / 86400000);
+          return el("div", { class: "rel" }, el("b", {}, r.t), el("span", {}, `${new Date(r.d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · ${days <= 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} j`}`));
+        })) : null,
+        el("h2", {}, "📦 En bref"),
+        el("div", { class: "stats" },
+          el("div", { class: "stat" }, el("b", {}, d.s ? d.s.f : 0), el("span", {}, "produits suivis")),
           el("div", { class: "stat" }, el("b", {}, d.s ? d.s.i : 0), el("span", {}, "en stock")),
-          el("div", { class: "stat" }, el("b", {}, (d.o || []).length), el("span", {}, "à ton prix"))),
-      ].filter((node) => node !== null));
-      const pause = document.getElementById("pause");
-      pause.textContent = d.on ? "⏸ Mettre la surveillance en pause" : "▶ Reprendre la surveillance";
-      pause.onclick = () => send({ a: d.on ? "pause" : "resume" });
+          el("div", { class: "stat" }, el("b", {}, offers.length), el("span", {}, "à ton prix"))),
+      ];
+    }
+
+    function follows() {
+      const list = d.f || [];
+      const isOn = (f) => (changes.follow.has(f.w) ? changes.follow.get(f.w) : f.on);
+      const shown = list.filter((f) => filter === "all" || (filter === "stock" && (f.st === "I" || f.st === "P")) || (filter === "off" && !isOn(f)));
+      return [
+        el("div", { class: "filters" }, ...[["all", `Tous (${list.length})`], ["stock", "En stock"], ["off", "En pause"]].map(([id, label]) =>
+          el("button", { class: filter === id ? "on" : null, onclick: () => { filter = id; haptic("select"); render(); } }, label))),
+        d.s && d.s.f > list.length ? el("p", { class: "m", style: "margin:0 4px 8px" }, `Les ${list.length} premiers de tes ${d.s.f} produits (en stock d'abord) : le reste dans le tableau de bord.`) : null,
+        shown.length === 0 ? el("div", { class: "card empty" }, list.length === 0 ? "Aucun produit suivi." : "Rien dans ce filtre.") : null,
+        ...shown.map((f) => {
+          const on = isOn(f);
+          const max = changes.max.has(f.w) ? changes.max.get(f.w) : f.x === undefined ? null : f.x;
+          const input = el("input", { class: "euro", inputmode: "decimal", value: max === null ? "" : typed(max), placeholder: f.l ? "auto" : "budget", "aria-label": "Ton max en euros" });
+          input.addEventListener("change", () => {
+            const cents = parseEuros(input.value);
+            if (cents === undefined) { input.value = max === null ? "" : typed(max); alert("Montant illisible : écris par exemple 80 ou 79,90."); return; }
+            if (cents === (f.x === undefined ? null : f.x)) changes.max.delete(f.w); else changes.max.set(f.w, cents);
+            render();
+          });
+          const toggle = el("label", { class: "switch" }, el("input", { type: "checkbox", checked: on, onchange: (e) => {
+            haptic("light");
+            if (e.target.checked === f.on) changes.follow.delete(f.w); else changes.follow.set(f.w, e.target.checked);
+            render();
+          } }), el("span", {}));
+          return el("div", { class: `card follow${on ? "" : " off"}${changes.follow.has(f.w) || changes.max.has(f.w) ? " dirty" : ""}` },
+            el("div", { class: "item" }, thumb(f.img), el("div", { class: "grow" },
+              el("div", { class: "t" }, f.t),
+              el("div", { class: "m" }, el("span", { class: `pill ${f.st}` }, STATE[f.st] || "?"), f.c ? `${euros(f.c)} · ` : "", f.m),
+              el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page ›"))),
+            el("div", { class: "ctl" }, el("div", { class: "max" }, "Ton max", input, "€", max === null && f.l ? el("span", { class: "m" }, `auto : ${euros(f.l)}`) : null), toggle));
+        }),
+      ];
+    }
+
+    function settings() {
+      if (!d.g) return [el("div", { class: "card empty" }, "Mets ton extension à jour pour régler depuis ici.")];
+      const change = (key, value) => { if (value === d.g[key]) delete changes.set[key]; else changes.set[key] = value; haptic("light"); render(); };
+      const sw = (checked, onchange) => el("label", { class: "switch" }, el("input", { type: "checkbox", checked, onchange: (e) => onchange(e.target.checked) }), el("span", {}));
+      const set = (title, hint, control) => el("div", { class: "set" }, el("div", { class: "grow" }, el("b", {}, title), el("span", {}, hint)), control);
+      const mg = settingOf("mg");
+      const margin = el("input", { class: "euro", inputmode: "numeric", value: mg < 0 ? "" : String(mg), placeholder: "%", "aria-label": "Marge en pourcent", disabled: mg < 0 ? "" : null });
+      margin.addEventListener("change", () => {
+        const n = Number(margin.value.replace("%", "").trim());
+        if (!Number.isInteger(n) || n < 0 || n > 100) { alert("Marge : un nombre entier de 0 à 100."); margin.value = String(mg); return; }
+        change("mg", n);
+      });
+      const al = settingOf("al");
+      return [
+        el("h2", {}, "🛒 Achat"),
+        el("div", { class: "card list" },
+          set("Achat automatique", "Après ton ✅, l'extension passe la commande. Coupé : la page s'ouvre pour finir à la main.", sw(settingOf("ab"), (v) => change("ab", v))),
+          set("Marge au-dessus du prix normal", mg < 0 ? "Coupée : ton max = le prix normal." : `Ton max = prix normal + ${mg} % (sauf « ton max » d'un produit).`,
+            el("div", { class: "row" }, margin, sw(mg >= 0, (v) => change("mg", v ? (d.g.mg >= 0 ? d.g.mg : 10) : -1))))),
+        el("h2", {}, "🔔 Alertes"),
+        el("div", { class: "card list" },
+          ...ALERTS.map(([title, hint], i) => set(title, hint, sw((al & (1 << i)) !== 0, (v) => change("al", v ? al | (1 << i) : al & ~(1 << i))))),
+          set("Son spécial", "le carillon de l'extension sur l'ordinateur", sw(settingOf("so"), (v) => change("so", v)))),
+        el("p", { class: "m", style: "margin:12px 4px" }, "Le reste (marchands, livraison, coffre, Discord) se règle dans le tableau de bord de l'extension."),
+      ];
+    }
+
+    function footer() {
+      const row = document.getElementById("footRow");
+      const n = changeCount();
+      if (n > 0) {
+        const ops = [
+          ...[...changes.follow].map(([w, on]) => ({ a: "follow", w, on })),
+          ...[...changes.max].map(([w, c]) => ({ a: "max", w, c })),
+          ...(Object.keys(changes.set).length > 0 ? [{ a: "set", ...changes.set }] : []),
+        ];
+        row.replaceChildren(
+          el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; render(); } }, "Annuler"),
+          el("button", { class: "big main", onclick: () => send({ a: "batch", ops }) }, `💾 Enregistrer ${n} changement${n > 1 ? "s" : ""}`));
+      } else {
+        row.replaceChildren(el("button", { class: "big ghost", onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Mettre la surveillance en pause" : "▶ Reprendre la surveillance"));
+      }
       document.getElementById("foot").hidden = false;
     }
 
-    decode(location.hash).then((d) => {
-      if (d === null) app.replaceChildren(el("p", { class: "empty" }, "Ouvre « Mon tableau » depuis le bouton en bas de ta conversation avec ton bot Pokemon Drop Assistant."));
-      else render(d);
+    function render() {
+      const body = tab === "follows" ? follows() : tab === "settings" ? settings() : home();
+      app.replaceChildren(...[...header(), ...body].filter((node) => node !== null));
+      footer();
+    }
+
+    decode(location.hash).then((data) => {
+      if (data === null) { app.replaceChildren(el("p", { class: "empty" }, "Ouvre « Mon tableau » depuis le bouton en bas de ta conversation avec ton bot Pokemon Drop Assistant.")); return; }
+      d = data;
+      render();
     }).catch((e) => app.replaceChildren(el("p", { class: "empty" }, `Tableau illisible : ${e.message}`)));
   </script>
 </body>
