@@ -35,6 +35,9 @@
     .tabs.five .dot { top: 2px; right: 2px; min-width: 14px; height: 14px; line-height: 14px; font-size: 9px; padding: 0 3px; }
     .friend { display: flex; gap: 10px; align-items: flex-start; padding: 11px 2px; border-bottom: 1px solid var(--line); } .friend:last-child { border-bottom: 0; }
     .friend .dot { font-size: 15px; line-height: 1.4; } .friend .grow span { display: block; font-size: 12.5px; color: var(--hint); }
+    .mfig { margin: 10px 0 4px; } .mchart { display: block; width: 100%; height: auto; }
+    .mchart .mbar { fill: var(--btn); } .mchart .mhit { fill: transparent; } .mchart .mhit:active, .mchart .mhit:hover { fill: var(--text); opacity: .08; }
+    .mchart .mbase { stroke: var(--line); stroke-width: 1; } .mchart .maxis { fill: var(--hint); font-size: 9px; }
     .tabs button.on { background: var(--btn); color: var(--btn-text); }
     .tabs .dot { position: absolute; top: 5px; right: 8px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--no); color: #fff; font-size: 10px; line-height: 16px; padding: 0 4px; }
     h2 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--hint); margin: 18px 4px 8px; display: flex; justify-content: space-between; align-items: baseline; }
@@ -222,7 +225,7 @@
             : d.v === false ? (d.k ? el("button", { class: "chip warn", onclick: unlockSheet }, "🔒 Coffre fermé · Ouvrir") : el("span", { class: "chip warn" }, "🔒 Coffre fermé")) : null,
           (d.b || 0) > 0 ? el("button", { class: "chip no", onclick: blockedSheet }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""} ›`) : null),
         el("nav", { class: d.ad ? "tabs five" : "tabs" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["releases", "Sorties", 0], ["settings", "Réglages", 0],
-          ...(d.ad ? [["admin", "Amis", d.ad.fr.filter((f) => f.t === "b").length]] : [])].map(([id, label, n]) =>
+          ...(d.ad ? [["admin", "Admin", d.ad.fr.filter((f) => f.t === "b").length + (d.ad.mc || []).filter((m) => m.t === "b").length]] : [])].map(([id, label, n]) =>
           el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
       ];
     }
@@ -363,10 +366,71 @@
         el("div", { class: "m" }, [f.seen ? `extension vue ${ago(f.seen)}` : "extension jamais vue", f.ver ? `version ${f.ver}` : "version inconnue (« Tester » la donne)", f.hp ? `${f.hp} demande(s) d'aide` : ""].filter(Boolean).join(" · ")),
         el("button", { class: "big main", style: "margin-top:12px;width:100%", onclick: () => send({ a: "admin", do: "test", f: f.i }) }, `🧪 Tester ${f.n}`));
     }
+    /** Une courbe d'activité (même dessin que le tableau de bord) : barres d'égale durée, la plus récente à droite, période et nombre au survol. */
+    const SVGNS = "http://www.w3.org/2000/svg";
+    const svgEl = (tag, attrs, text) => { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v)); if (text !== undefined) e.textContent = text; return e; };
+    const RANGES = { d: { ms: 30 * 60000, axis: ["il y a 24 h", "il y a 12 h", "maintenant"], per: "par demi-heure", span: "sur 24 h" },
+      w: { ms: 4 * 3600000, axis: ["il y a 7 j", "il y a 3 j ½", "maintenant"], per: "par 4 h", span: "sur 7 jours" },
+      m: { ms: 86400000, axis: ["il y a 30 j", "il y a 15 j", "aujourd'hui"], per: "par jour", span: "sur 30 jours" } };
+    const hm = (ms) => new Date(ms).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    const dd = (ms) => new Date(ms).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+    function chart(title, series, range, unit) {
+      const R = RANGES[range];
+      const W = 320, H = 70, TOP = 12, BASE = H - 14;
+      const max = Math.max(0, ...series), total = series.reduce((x, y) => x + y, 0);
+      const now = Date.now();
+      const end = range === "m" ? new Date(now).setHours(0, 0, 0, 0) + 86400000 : Math.floor(now / R.ms) * R.ms + R.ms;
+      const start = end - series.length * R.ms;
+      const box = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "mchart" });
+      const step = W / Math.max(1, series.length);
+      box.append(svgEl("line", { x1: 0, x2: W, y1: BASE, y2: BASE, class: "mbase" }));
+      series.forEach((n, i) => {
+        const hgt = max === 0 ? 0 : Math.max(n > 0 ? 2 : 0, ((BASE - TOP) * n) / max);
+        if (hgt > 0) box.append(svgEl("rect", { x: i * step + 0.5, y: BASE - hgt, width: Math.max(1, step - 1), height: hgt, rx: 1, class: "mbar" }));
+        const from = start + i * R.ms;
+        const hit = svgEl("rect", { x: i * step, y: 0, width: step, height: BASE, class: "mhit" });
+        hit.append(svgEl("title", {}, `${range === "m" ? dd(from + R.ms / 2) : range === "w" ? `${dd(from)} ${hm(from)}–${hm(from + R.ms)}` : `${hm(from)}–${hm(from + R.ms)}`} : ${n} ${unit}${n > 1 ? "s" : ""}`));
+        box.append(hit);
+      });
+      R.axis.forEach((label, i) => box.append(svgEl("text", { x: [0, W / 2, W][i], y: H - 2, "text-anchor": ["start", "middle", "end"][i], class: "maxis" }, label)));
+      if (max > 0) box.append(svgEl("text", { x: 0, y: 9, class: "maxis" }, `max ${max} ${R.per}`));
+      return el("div", { class: "mfig" }, el("div", { class: "m" }, `${title} — ${total} ${R.span}`), box);
+    }
+    /** La fiche d'un marchand : ses courbes (pages lues sur la période choisie, ses onglets sur 24 h) et la phrase de chaque onglet. */
+    let mrange = "d";
+    function merchantSheet(mc) {
+      const sheet = sheetOf(el("div", { id: "msheet" }));
+      const draw = () => {
+        const host = sheet.querySelector("#msheet");
+        const series = mc.r ? (mrange === "w" ? mc.r.w : mrange === "m" ? mc.r.m : mc.r.d) : undefined;
+        host.replaceChildren(...[
+          el("h3", {}, `${FRIEND_DOT[mc.t] || "⚪"} ${mc.n}`), el("p", {}, mc.s), el("div", { class: "m" }, `${mc.rd} page${mc.rd > 1 ? "s" : ""} lue${mc.rd > 1 ? "s" : ""} aujourd'hui`),
+          el("div", { class: "filters", style: "margin-top:10px" }, ...[["d", "24 h"], ["w", "7 jours"], ["m", "1 mois"]].map(([id, label]) =>
+            el("button", { class: mrange === id ? "on" : null, onclick: () => { mrange = id; haptic("select"); draw(); } }, label))),
+          series ? chart("Pages lues", series, mrange, "page") : el("p", { class: "m" }, "Courbe non transmise (lien trop long) : ouvre le Diagnostic du tableau de bord."),
+          mrange === "d" && mc.l ? chart("Onglet de lecture", mc.l, "d", "page") : null,
+          mrange === "d" && mc.c ? chart("Onglet du compte", mc.c, "d", "page") : null,
+          mc.tl ? el("p", { class: "m" }, `Onglet de lecture : ${mc.tl}`) : null,
+          mc.tc ? el("p", { class: "m" }, `Onglet du compte : ${mc.tc}`) : null].filter((node) => node !== null));
+      };
+      draw();
+    }
+    let aview = "friends";
     function admin() {
       const a = d.ad;
+      const pick = el("div", { class: "filters" }, ...[["friends", `Amis (${a.fr.length})`], ["merchants", `Marchands (${(a.mc || []).length})`]].map(([id, label]) =>
+        el("button", { class: aview === id ? "on" : null, onclick: () => { aview = id; haptic("select"); render(); } }, label)));
+      if (aview === "merchants") {
+        const list = a.mc || [];
+        return [pick,
+          el("p", { class: "m", style: "margin:0 4px 8px" }, "Lu sur ton PC dans ce que l'extension a gardé : rien n'est relu chez les marchands. Touche un marchand pour ses courbes."),
+          list.length === 0 ? el("div", { class: "card empty" }, "Activité des marchands non transmise (lien trop long ou extension à mettre à jour).")
+            : el("div", { class: "card list" }, ...list.map((mc) => el("div", { class: "friend tap", onclick: () => merchantSheet(mc) },
+              el("span", { class: "dot" }, FRIEND_DOT[mc.t] || "⚪"),
+              el("div", { class: "grow" }, el("b", {}, mc.n), el("span", {}, mc.s), el("span", {}, `${mc.rd} lue${mc.rd > 1 ? "s" : ""} aujourd'hui`)))))];
+      }
       const help = a.fr.reduce((n, f) => n + (f.hp || 0), 0);
-      return [
+      return [pick,
         el("div", { class: "stats" },
           el("div", { class: "stat" }, el("b", {}, a.fr.length), el("span", {}, "amis")),
           el("div", { class: "stat" }, el("b", {}, `${a.up}/${a.fr.length}`), el("span", {}, `sur la ${a.v}`)),
