@@ -83,6 +83,11 @@
     .sheet { position: fixed; inset: 0; background: #0007; display: grid; align-items: end; z-index: 9; }
     .sheet > div { background: var(--bg); border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); max-width: 640px; width: 100%; margin: 0 auto; }
     .sheet h3 { margin: 0 0 6px; font-size: 17px; } .sheet p { margin: 0 0 12px; color: var(--hint); font-size: 13px; }
+    .sheet h3 { margin: 0 0 4px; } .sheet .offer { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); } .sheet .offer:last-child { border-bottom: 0; }
+    .sheet .scroll { max-height: 60vh; overflow-y: auto; }
+    .search { width: 100%; font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); margin: 0 0 8px; }
+    .hist { display: flex; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); } .hist:last-child { border-bottom: 0; } .hist .grow span { display: block; color: var(--hint); font-size: 12.5px; }
+    .tap { cursor: pointer; }
     .sheet input { width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); margin-bottom: 12px; }
   </style>
 </head>
@@ -155,9 +160,33 @@
     let d = null;
     let tab = "home";
     let filter = "all";
+    /** Recherche et filtre par extension dans Suivis (2026-10-21). */
+    let query = "";
+    let ext = "";
     /** Les changements pas encore envoyés : un seul envoi pour tout (l'appli se ferme après un envoi). */
-    const changes = { follow: new Map(), max: new Map(), set: {} };
-    const changeCount = () => changes.follow.size + changes.max.size + Object.keys(changes.set).length;
+    const changes = { follow: new Map(), max: new Map(), set: {}, want: new Map() };
+    const changeCount = () => changes.follow.size + changes.max.size + Object.keys(changes.set).length + changes.want.size;
+    const plain = (t) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    /** Une fenêtre du bas (fiche produit, blocages) ; un tap à côté la ferme. */
+    const sheetOf = (...children) => {
+      const sheet = el("div", { class: "sheet", onclick: (e) => { if (e.target === sheet) sheet.remove(); } }, el("div", {}, ...children, el("button", { class: "big ghost", style: "margin-top:12px;width:100%", onclick: () => sheet.remove() }, "Fermer")));
+      document.body.append(sheet);
+      return sheet;
+    };
+    /** La FICHE d'un produit suivi : toutes ses offres, la moins chère d'abord, avec « ⚡ Acheter » sur celles en stock (2026-10-21). */
+    function productSheet(f) {
+      const offers = f.os && f.os.length > 0 ? f.os : [[f.m, f.c === undefined ? null : f.c, f.st, null]];
+      sheetOf(el("h3", {}, f.t), el("div", { class: "m" }, `${offers.length} offre${offers.length > 1 ? "s" : ""}${f.e ? ` · ${f.e}` : ""}`),
+        el("div", { class: "scroll" }, ...offers.map(([m, c, st, w]) => el("div", { class: "offer" },
+          el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, el("span", { class: `pill ${st}` }, STATE[st] || "?"), c === null ? "" : euros(c))),
+          w && (st === "I" || st === "P") && c !== null ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${f.t} » à ${euros(c)} chez ${m} ? Ton extension lance l'achat tout de suite (mêmes garde-fous qu'un ✅).`, () => send({ a: "buyNow", w })) }, "⚡ Acheter") : null))),
+        el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page de l'offre la moins chère ›"));
+    }
+    /** Le détail des marchands bloqués (2026-10-21). */
+    function blockedSheet() {
+      sheetOf(el("h3", {}, "⛔ Marchands bloqués"), el("div", { class: "m" }, "L'extension ne les relit plus pour l'instant ; rien à faire, elle réessaie seule."),
+        ...(d.bl || []).map((b) => el("div", { class: "offer" }, el("div", { class: "grow" }, el("b", {}, b.m), el("div", { class: "m" }, `${b.w}${b.u ? ` · reprise vers ${new Date(b.u).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}`)))));
+    }
     const settingOf = (key) => (key in changes.set ? changes.set[key] : d.g ? d.g[key] : undefined);
 
     function unlockSheet() {
@@ -187,8 +216,8 @@
           el("span", { class: `chip ${d.on ? "ok" : "warn"}` }, d.on ? "● Surveillance active" : "⏸ En pause"),
           d.v === true ? el("span", { class: "chip ok" }, "🔓 Coffre ouvert")
             : d.v === false ? (d.k ? el("button", { class: "chip warn", onclick: unlockSheet }, "🔒 Coffre fermé · Ouvrir") : el("span", { class: "chip warn" }, "🔒 Coffre fermé")) : null,
-          (d.b || 0) > 0 ? el("span", { class: "chip no" }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""}`) : null),
-        el("nav", { class: "tabs" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["settings", "Réglages", 0]].map(([id, label, n]) =>
+          (d.b || 0) > 0 ? el("button", { class: "chip no", onclick: blockedSheet }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""} ›`) : null),
+        el("nav", { class: "tabs" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["releases", "Sorties", 0], ["settings", "Réglages", 0]].map(([id, label, n]) =>
           el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
       ];
     }
@@ -218,19 +247,33 @@
           const days = Math.round((r.d - new Date().setHours(0, 0, 0, 0)) / 86400000);
           return el("div", { class: "rel" }, el("b", {}, r.t), el("span", {}, `${new Date(r.d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · ${days <= 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} j`}`));
         })) : null,
+        (d.h || []).length > 0 ? el("h2", {}, "🧾 Dernières demandes") : null,
+        (d.h || []).length > 0 ? el("div", { class: "card list" }, ...d.h.map((x) => el("div", { class: "hist" },
+          el("b", {}, x.v === "A" ? "✅" : x.v === "R" ? "❌" : "⌛"),
+          el("div", { class: "grow" }, el("b", {}, x.t), el("span", {}, `${x.m} · ${new Date(x.at).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${x.r ? ` · ${x.r}` : ""}`))))) : null,
         el("h2", {}, "📦 En bref"),
         el("div", { class: "stats" },
           el("div", { class: "stat" }, el("b", {}, d.s ? d.s.f : 0), el("span", {}, "produits suivis")),
           el("div", { class: "stat" }, el("b", {}, d.s ? d.s.i : 0), el("span", {}, "en stock")),
           el("div", { class: "stat" }, el("b", {}, offers.length), el("span", {}, "à ton prix"))),
+        el("p", { class: "m", style: "margin:10px 4px" }, "🟢 L'heure du bouton à gauche de la zone de saisie (« PC hh:mm ») dit quand ton PC a donné signe de vie : si elle ne bouge plus, il est éteint, en veille ou Brave est fermé."),
       ];
     }
 
     function follows() {
       const list = d.f || [];
       const isOn = (f) => (changes.follow.has(f.w) ? changes.follow.get(f.w) : f.on);
-      const shown = list.filter((f) => filter === "all" || (filter === "stock" && (f.st === "I" || f.st === "P")) || (filter === "off" && !isOn(f)));
+      const words = plain(query).split(/\s+/).filter(Boolean);
+      const shown = list.filter((f) => filter === "all" || (filter === "stock" && (f.st === "I" || f.st === "P")) || (filter === "off" && !isOn(f)))
+        .filter((f) => ext === "" || f.e === ext)
+        .filter((f) => words.every((w) => plain(`${f.t} ${f.e || ""} ${f.m}`).includes(w)));
+      const exts = [...new Set(list.map((f) => f.e).filter(Boolean))].sort();
+      const search = el("input", { class: "search", type: "search", placeholder: "🔍 Chercher un produit", value: query });
+      search.addEventListener("input", () => { query = search.value; const pos = search.selectionStart; render(); const again = document.querySelector(".search"); if (again) { again.focus(); again.setSelectionRange(pos, pos); } });
       return [
+        search,
+        exts.length > 1 ? el("div", { class: "filters" }, el("button", { class: ext === "" ? "on" : null, onclick: () => { ext = ""; render(); } }, "Toutes les extensions"),
+          ...exts.map((e) => el("button", { class: ext === e ? "on" : null, onclick: () => { ext = e; haptic("select"); render(); } }, e))) : null,
         el("div", { class: "filters" }, ...[["all", `Tous (${list.length})`], ["stock", "En stock"], ["off", "En pause"]].map(([id, label]) =>
           el("button", { class: filter === id ? "on" : null, onclick: () => { filter = id; haptic("select"); render(); } }, label))),
         d.s && d.s.f > list.length ? el("p", { class: "m", style: "margin:0 4px 8px" }, `Les ${list.length} premiers de tes ${d.s.f} produits (en stock d'abord) : le reste dans le tableau de bord.`) : null,
@@ -251,12 +294,32 @@
             render();
           } }), el("span", {}));
           return el("div", { class: `card follow${on ? "" : " off"}${changes.follow.has(f.w) || changes.max.has(f.w) ? " dirty" : ""}` },
-            el("div", { class: "item" }, thumb(f.img), el("div", { class: "grow" },
-              el("div", { class: "t" }, f.t),
+            el("div", { class: "item tap", onclick: (e) => { if (e.target.tagName !== "A") productSheet(f); } }, thumb(f.img), el("div", { class: "grow" },
+              el("div", { class: "t" }, f.t, f.os && f.os.length > 1 ? el("span", { class: "m" }, ` · ${f.os.length} offres ›`) : null),
               el("div", { class: "m" }, el("span", { class: `pill ${f.st}` }, STATE[f.st] || "?"), f.c ? `${euros(f.c)} · ` : "", f.m),
               el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page ›"))),
             el("div", { class: "ctl" }, el("div", { class: "max" }, "Ton max", input, "€", max === null && f.l ? el("span", { class: "m" }, `auto : ${euros(f.l)}`) : null), toggle));
         }),
+      ];
+    }
+
+    /** SORTIES (2026-10-21) : les prochaines sorties, « je la veux » d'un tap (ses produits suivis dès qu'ils apparaissent) ; envoyé avec « Enregistrer ». */
+    function releases() {
+      const list = d.rs || [];
+      if (list.length === 0) return [el("div", { class: "card empty" }, d.rs ? "Aucune sortie à venir connue." : "Mets ton extension à jour pour voir les sorties ici.")];
+      const isOn = (r) => (changes.want.has(r.i) ? changes.want.get(r.i) : r.on);
+      return [
+        el("p", { class: "m", style: "margin:0 4px 8px" }, "Coche une sortie : ses produits seront suivis dès qu'ils apparaissent chez les marchands, et l'achat te sera proposé dans ton budget."),
+        el("div", { class: "card list" }, ...list.map((r) => {
+          const days = r.d === null ? null : Math.round((r.d - new Date().setHours(0, 0, 0, 0)) / 86400000);
+          const toggle = el("label", { class: "switch" }, el("input", { type: "checkbox", checked: isOn(r), onchange: (e) => {
+            haptic("light");
+            if (e.target.checked === r.on) changes.want.delete(r.i); else changes.want.set(r.i, e.target.checked);
+            render();
+          } }), el("span", {}));
+          return el("div", { class: "set" }, el("div", { class: "grow" }, el("b", {}, r.t),
+            el("span", {}, r.d === null ? "date pas encore connue" : `${new Date(r.d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · ${days <= 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} j`}`)), toggle);
+        })),
       ];
     }
 
@@ -295,9 +358,10 @@
           ...[...changes.follow].map(([w, on]) => ({ a: "follow", w, on })),
           ...[...changes.max].map(([w, c]) => ({ a: "max", w, c })),
           ...(Object.keys(changes.set).length > 0 ? [{ a: "set", ...changes.set }] : []),
+          ...[...changes.want].map(([i, on]) => ({ a: "want", i, on })),
         ];
         row.replaceChildren(
-          el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; render(); } }, "Annuler"),
+          el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; changes.want.clear(); render(); } }, "Annuler"),
           el("button", { class: "big main", onclick: () => send({ a: "batch", ops }) }, `💾 Enregistrer ${n} changement${n > 1 ? "s" : ""}`));
       } else {
         row.replaceChildren(el("button", { class: "big ghost", onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Mettre la surveillance en pause" : "▶ Reprendre la surveillance"));
@@ -306,7 +370,7 @@
     }
 
     function render() {
-      const body = tab === "follows" ? follows() : tab === "settings" ? settings() : home();
+      const body = tab === "follows" ? follows() : tab === "releases" ? releases() : tab === "settings" ? settings() : home();
       app.replaceChildren(...[...header(), ...body].filter((node) => node !== null));
       footer();
     }
