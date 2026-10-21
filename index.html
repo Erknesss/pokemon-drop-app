@@ -31,6 +31,10 @@
     button.chip { cursor: pointer; } button.chip.warn { background: color-mix(in srgb, var(--warn) 14%, var(--card)); }
     .tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; padding: 6px 0 10px; }
     .tabs button { flex: 1; font: inherit; font-size: 14px; font-weight: 650; padding: 9px 6px; border: 0; border-radius: 11px; background: var(--card); color: var(--hint); cursor: pointer; position: relative; }
+    .tabs.five button { font-size: 12.5px; padding: 9px 2px; }
+    .tabs.five .dot { top: 2px; right: 2px; min-width: 14px; height: 14px; line-height: 14px; font-size: 9px; padding: 0 3px; }
+    .friend { display: flex; gap: 10px; align-items: flex-start; padding: 11px 2px; border-bottom: 1px solid var(--line); } .friend:last-child { border-bottom: 0; }
+    .friend .dot { font-size: 15px; line-height: 1.4; } .friend .grow span { display: block; font-size: 12.5px; color: var(--hint); }
     .tabs button.on { background: var(--btn); color: var(--btn-text); }
     .tabs .dot { position: absolute; top: 5px; right: 8px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--no); color: #fff; font-size: 10px; line-height: 16px; padding: 0 4px; }
     h2 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--hint); margin: 18px 4px 8px; display: flex; justify-content: space-between; align-items: baseline; }
@@ -217,7 +221,8 @@
           d.v === true ? el("span", { class: "chip ok" }, "🔓 Coffre ouvert")
             : d.v === false ? (d.k ? el("button", { class: "chip warn", onclick: unlockSheet }, "🔒 Coffre fermé · Ouvrir") : el("span", { class: "chip warn" }, "🔒 Coffre fermé")) : null,
           (d.b || 0) > 0 ? el("button", { class: "chip no", onclick: blockedSheet }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""} ›`) : null),
-        el("nav", { class: "tabs" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["releases", "Sorties", 0], ["settings", "Réglages", 0]].map(([id, label, n]) =>
+        el("nav", { class: d.ad ? "tabs five" : "tabs" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["releases", "Sorties", 0], ["settings", "Réglages", 0],
+          ...(d.ad ? [["admin", "Amis", d.ad.fr.filter((f) => f.t === "b").length]] : [])].map(([id, label, n]) =>
           el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
       ];
     }
@@ -350,6 +355,33 @@
       ];
     }
 
+    /** AMIS (2026-10-21) : l'état de chaque ami, pour l'admin du serveur seulement (absent chez les amis), « Tester » et « Actualiser ». */
+    const FRIEND_DOT = { o: "🟢", w: "🟠", b: "🔴", m: "⚪" };
+    function friendSheet(f) {
+      sheetOf(el("h3", {}, `${FRIEND_DOT[f.t]} ${f.n}`), el("div", { class: "m" }, f.n === f.i ? "" : `pseudo Discord : ${f.i}`),
+        el("p", {}, f.s),
+        el("div", { class: "m" }, [f.seen ? `extension vue ${ago(f.seen)}` : "extension jamais vue", f.ver ? `version ${f.ver}` : "version inconnue (« Tester » la donne)", f.hp ? `${f.hp} demande(s) d'aide` : ""].filter(Boolean).join(" · ")),
+        el("button", { class: "big main", style: "margin-top:12px;width:100%", onclick: () => send({ a: "admin", do: "test", f: f.i }) }, `🧪 Tester ${f.n}`));
+    }
+    function admin() {
+      const a = d.ad;
+      const help = a.fr.reduce((n, f) => n + (f.hp || 0), 0);
+      return [
+        el("div", { class: "stats" },
+          el("div", { class: "stat" }, el("b", {}, a.fr.length), el("span", {}, "amis")),
+          el("div", { class: "stat" }, el("b", {}, `${a.up}/${a.fr.length}`), el("span", {}, `sur la ${a.v}`)),
+          el("div", { class: "stat" }, el("b", {}, a.fr.filter((f) => f.t === "b").length), el("span", {}, "à aider"))),
+        help > 0 ? el("p", { class: "old" }, `🆘 ${help} demande${help > 1 ? "s" : ""} d'aide en attente (onglet Serveur du tableau de bord)`) : null,
+        el("p", { class: "m", style: "margin:10px 4px" }, a.at ? `État lu ${ago(a.at)}. « Tester » demande à chaque extension de répondre : réponses dans ta conversation en 1 à 2 min.` : "État jamais lu : touche « Actualiser »."),
+        el("div", { class: "row", style: "margin-bottom:10px" },
+          el("button", { class: "big ghost", onclick: () => send({ a: "admin", do: "refresh" }) }, "🔄 Actualiser"),
+          el("button", { class: "big main", onclick: () => send({ a: "admin", do: "test" }) }, "🧪 Tester tout le monde")),
+        a.fr.length === 0 ? el("div", { class: "card empty" }, "Aucun ami ajouté (onglet Serveur du tableau de bord).") : el("div", { class: "card list" }, ...a.fr.map((f) => el("div", { class: "friend tap", onclick: () => friendSheet(f) },
+          el("span", { class: "dot" }, FRIEND_DOT[f.t] || "⚪"),
+          el("div", { class: "grow" }, el("b", {}, f.n), el("span", {}, f.s), el("span", {}, [f.seen ? `vu ${ago(f.seen)}` : "", f.ver ? `v${f.ver}` : ""].filter(Boolean).join(" · ")))))),
+      ];
+    }
+
     function footer() {
       const row = document.getElementById("footRow");
       const n = changeCount();
@@ -370,7 +402,7 @@
     }
 
     function render() {
-      const body = tab === "follows" ? follows() : tab === "releases" ? releases() : tab === "settings" ? settings() : home();
+      const body = tab === "follows" ? follows() : tab === "releases" ? releases() : tab === "settings" ? settings() : tab === "admin" && d.ad ? admin() : home();
       app.replaceChildren(...[...header(), ...body].filter((node) => node !== null));
       footer();
     }
