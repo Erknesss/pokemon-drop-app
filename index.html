@@ -184,8 +184,8 @@
     let ext = "";
     /** Les changements pas encore envoyés : un seul envoi pour tout (l'appli se ferme après un envoi). */
     // decide : demande → "buy" | "refuse" ; buyNow : offre → libellé (2026-10-22 : PANIER DE CHOIX, l'appli ne se ferme qu'à l'envoi).
-    const changes = { follow: new Map(), max: new Map(), set: {}, want: new Map(), decide: new Map(), buyNow: new Map() };
-    const changeCount = () => changes.follow.size + changes.max.size + Object.keys(changes.set).length + changes.want.size + changes.decide.size + changes.buyNow.size;
+    const changes = { follow: new Map(), max: new Map(), set: {}, want: new Map(), decide: new Map(), buyNow: new Map(), quick: new Map() };
+    const changeCount = () => changes.follow.size + changes.max.size + Object.keys(changes.set).length + changes.want.size + changes.decide.size + changes.buyNow.size + changes.quick.size;
     /** Choisir (ou retirer, au 2e tap) une réponse à une demande. */
     const decide = (id, v) => {
       // Extension d'avant le panier (pas de « bk ») : la réponse part tout de suite, comme avant.
@@ -265,6 +265,16 @@
           el("div", { class: "row" },
             el("button", { class: `big buy${changes.decide.get(r.i) === "buy" ? " picked" : ""}`, onclick: () => decide(r.i, "buy") }, changes.decide.get(r.i) === "buy" ? "✅ Acheter · choisi" : "✅ Acheter"),
             el("button", { class: `big no${changes.decide.get(r.i) === "refuse" ? " picked" : ""}`, onclick: () => decide(r.i, "refuse") }, changes.decide.get(r.i) === "refuse" ? "❌ Refuser · choisi" : "❌ Refuser")))),
+        // Les NOUVEAUX articles vus par le guet (3 h) : « ⚡ Acheter » au panier, comme sous l'alerte Telegram (2026-10-22).
+        (d.nq || []).length > 0 ? el("h2", {}, "🆕 Nouveaux articles", el("small", {}, `${d.nq.length}`)) : null,
+        ...(d.nq || []).map((n) => el("div", { class: "card" }, el("div", { class: "item" },
+          el("div", { class: "grow" },
+            el("div", { class: "t" }, n.t),
+            el("div", { class: "p" }, n.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, n.c === null ? "prix à voir" : euros(n.c)),
+            el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(n.u); } }, `${n.m} · voir la page ›`)),
+          el("button", { class: `small buy${changes.quick.has(n.q) ? " picked" : ""}`, onclick: () => (changes.quick.has(n.q) ? (changes.quick.delete(n.q), render())
+            : confirmThen(`Acheter « ${n.t} »${n.c === null ? "" : ` à ${euros(n.c)}`} chez ${n.m} ? L'achat part avec ton prochain envoi (mêmes garde-fous qu'un ✅).`, () => { changes.quick.set(n.q, n.t); render(); })) },
+            changes.quick.has(n.q) ? "⚡ choisi" : "⚡ Acheter")))),
         el("h2", {}, "🔥 Achetable maintenant à ton prix"),
         offers.length === 0 ? el("div", { class: "card empty" }, "Rien en stock dans ton budget pour l'instant.") : null,
         ...offers.map((o) => el("div", { class: "card" }, el("div", { class: "item" },
@@ -506,10 +516,11 @@
           ...[...changes.want].map(([i, on]) => ({ a: "want", i, on })),
           ...[...changes.decide].map(([id, v]) => ({ a: v, id })),
           ...[...changes.buyNow.keys()].map((w) => ({ a: "buyNow", w })),
+          ...[...changes.quick.keys()].map((q) => ({ a: "quick", q })),
         ];
-        const choices = changes.decide.size + changes.buyNow.size;
+        const choices = changes.decide.size + changes.buyNow.size + changes.quick.size;
         row.replaceChildren(
-          el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; changes.want.clear(); changes.decide.clear(); changes.buyNow.clear(); render(); } }, "Annuler"),
+          el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; changes.want.clear(); changes.decide.clear(); changes.buyNow.clear(); changes.quick.clear(); render(); } }, "Annuler"),
           el("button", { class: "big main", onclick: () => send({ a: "batch", ops }) }, choices > 0 ? `📤 Envoyer ${n} choix` : `💾 Enregistrer ${n} changement${n > 1 ? "s" : ""}`));
       } else {
         row.replaceChildren(el("button", { class: "big ghost", onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Mettre la surveillance en pause" : "▶ Reprendre la surveillance"));
