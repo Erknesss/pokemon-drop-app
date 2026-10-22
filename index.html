@@ -32,6 +32,15 @@
     .tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; padding: 6px 0 10px; }
     .tabs button { flex: 1; font: inherit; font-size: 14px; font-weight: 650; padding: 9px 6px; border: 0; border-radius: 11px; background: var(--card); color: var(--hint); cursor: pointer; position: relative; }
     .tabs.five button { font-size: 12.5px; padding: 9px 2px; }
+    .tabs.six button { font-size: 11.5px; padding: 9px 1px; }
+    .tabs.six .dot { top: 2px; right: 1px; min-width: 14px; height: 14px; line-height: 14px; font-size: 9px; padding: 0 3px; }
+    .health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .hcell { margin: 0; padding: 10px 12px; }
+    .hcell .hlabel { font-weight: 700; margin-bottom: 2px; }
+    .hcell.no { border-color: var(--no); } .hcell.warn { border-color: var(--warn); }
+    .mbar { display: flex; gap: 3px; margin: 0 4px 10px; height: 22px; }
+    .mseg { display: grid; place-items: center; border-radius: 6px; font-size: 11px; font-weight: 700; color: #fff; min-width: 22px; }
+    .mseg.ok { background: var(--ok); } .mseg.warn { background: var(--warn); } .mseg.no { background: var(--no); } .mseg.mute { background: var(--mute); }
     .tabs.five .dot { top: 2px; right: 2px; min-width: 14px; height: 14px; line-height: 14px; font-size: 9px; padding: 0 3px; }
     .friend { display: flex; gap: 10px; align-items: flex-start; padding: 11px 2px; border-bottom: 1px solid var(--line); } .friend:last-child { border-bottom: 0; }
     .friend .dot { font-size: 15px; line-height: 1.4; } .friend .grow span { display: block; font-size: 12.5px; color: var(--hint); }
@@ -39,6 +48,7 @@
     .mchart .mbar { fill: var(--btn); } .mchart .mhit { fill: transparent; } .mchart .mhit:active, .mchart .mhit:hover { fill: var(--text); opacity: .08; }
     .mchart .mbase { stroke: var(--line); stroke-width: 1; } .mchart .maxis { fill: var(--hint); font-size: 9px; }
     .tabs button.on { background: var(--btn); color: var(--btn-text); }
+    button.picked { outline: 3px solid var(--text); outline-offset: -3px; font-weight: 700; }
     .tabs .dot { position: absolute; top: 5px; right: 8px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--no); color: #fff; font-size: 10px; line-height: 16px; padding: 0 4px; }
     h2 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--hint); margin: 18px 4px 8px; display: flex; justify-content: space-between; align-items: baseline; }
     h2 small { text-transform: none; letter-spacing: 0; font-weight: 500; }
@@ -62,6 +72,7 @@
     .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; margin-right: 6px; vertical-align: 1px; }
     .pill.I { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); } .pill.P { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
     .pill.S { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); } .pill.O, .pill.U { background: color-mix(in srgb, var(--mute) 16%, transparent); color: var(--mute); }
+    .pill.R { background: color-mix(in srgb, var(--no) 14%, transparent); color: var(--no); }
     .empty { color: var(--hint); text-align: center; padding: 18px 8px; }
     .stats { display: flex; gap: 8px; }
     .stat { flex: 1; text-align: center; background: var(--card); border-radius: 15px; padding: 12px 6px; }
@@ -135,7 +146,8 @@
       // Une photo que le marchand refuse de montrer hors de son site : la vignette de remplacement.
       return el("img", { class: "thumb", src, alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: (e) => e.target.replaceWith(ph()) });
     };
-    const STATE = { I: "En stock", P: "Précommande", S: "Bientôt", O: "Épuisé", U: "Inconnu" };
+    // R : en stock mais au-dessus de ton budget (revendeur) ; U : pas relu récemment (lectures en échec), son dernier état n'est pas sûr (2026-10-22).
+    const STATE = { I: "En stock", P: "Précommande", R: "Prix trop haut", S: "Bientôt", O: "Épuisé", U: "Pas relu" };
     const ALERTS = [["En stock", "retour en stock"], ["Précommande", "précommande ouverte"], ["Baisse de prix", "un produit suivi baisse"], ["Bientôt disponible", "fiche annoncée"], ["Épuisé", "plus en stock"], ["Blocage à résoudre", "captcha ou accès limité"]];
     const parseEuros = (text) => { const t = text.trim().replace(/\s|€/g, "").replace(",", "."); if (t === "") return null; const n = Number(t); return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 100) : undefined; };
 
@@ -171,8 +183,18 @@
     let query = "";
     let ext = "";
     /** Les changements pas encore envoyés : un seul envoi pour tout (l'appli se ferme après un envoi). */
-    const changes = { follow: new Map(), max: new Map(), set: {}, want: new Map() };
-    const changeCount = () => changes.follow.size + changes.max.size + Object.keys(changes.set).length + changes.want.size;
+    // decide : demande → "buy" | "refuse" ; buyNow : offre → libellé (2026-10-22 : PANIER DE CHOIX, l'appli ne se ferme qu'à l'envoi).
+    const changes = { follow: new Map(), max: new Map(), set: {}, want: new Map(), decide: new Map(), buyNow: new Map() };
+    const changeCount = () => changes.follow.size + changes.max.size + Object.keys(changes.set).length + changes.want.size + changes.decide.size + changes.buyNow.size;
+    /** Choisir (ou retirer, au 2e tap) une réponse à une demande. */
+    const decide = (id, v) => {
+      // Extension d'avant le panier (pas de « bk ») : la réponse part tout de suite, comme avant.
+      if (!d.bk) { send({ a: v, id }); return; }
+      if (changes.decide.get(id) === v) changes.decide.delete(id); else changes.decide.set(id, v);
+      haptic("select"); render();
+    };
+    /** « ⚡ Acheter » : mis au panier (ou envoyé tout de suite à une extension d'avant le panier). */
+    const pickBuyNow = (w, label) => { if (!d.bk) send({ a: "buyNow", w }); else { changes.buyNow.set(w, label); render(); } };
     const plain = (t) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     /** Une fenêtre du bas (fiche produit, blocages) ; un tap à côté la ferme. */
     const sheetOf = (...children) => {
@@ -186,7 +208,8 @@
       sheetOf(el("h3", {}, f.t), el("div", { class: "m" }, `${offers.length} offre${offers.length > 1 ? "s" : ""}${f.e ? ` · ${f.e}` : ""}`),
         el("div", { class: "scroll" }, ...offers.map(([m, c, st, w]) => el("div", { class: "offer" },
           el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, el("span", { class: `pill ${st}` }, STATE[st] || "?"), c === null ? "" : euros(c))),
-          w && (st === "I" || st === "P") && c !== null ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${f.t} » à ${euros(c)} chez ${m} ? Ton extension lance l'achat tout de suite (mêmes garde-fous qu'un ✅).`, () => send({ a: "buyNow", w })) }, "⚡ Acheter") : null))),
+          w && (st === "I" || st === "P") && c !== null ? el("button", { class: `small buy${changes.buyNow.has(w) ? " picked" : ""}`, onclick: () => (changes.buyNow.has(w) ? (changes.buyNow.delete(w), render())
+            : confirmThen(`Acheter « ${f.t} » à ${euros(c)} chez ${m} ? L'achat part avec ton prochain envoi (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w, f.t))) }, changes.buyNow.has(w) ? "⚡ choisi" : "⚡ Acheter") : null))),
         el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page de l'offre la moins chère ›"));
     }
     /** Le détail des marchands bloqués (2026-10-21). */
@@ -224,7 +247,8 @@
           d.v === true ? el("span", { class: "chip ok" }, "🔓 Coffre ouvert")
             : d.v === false ? (d.k ? el("button", { class: "chip warn", onclick: unlockSheet }, "🔒 Coffre fermé · Ouvrir") : el("span", { class: "chip warn" }, "🔒 Coffre fermé")) : null,
           (d.b || 0) > 0 ? el("button", { class: "chip no", onclick: blockedSheet }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""} ›`) : null),
-        el("nav", { class: d.ad ? "tabs five" : "tabs" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["releases", "Sorties", 0], ["settings", "Réglages", 0],
+        el("nav", { class: d.ad ? "tabs six" : "tabs five" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["releases", "Sorties", 0],
+          ["state", "État", (d.hc || []).filter((x) => x[1] === "b").length + (d.ms || []).filter((m) => m.t === "b").length], ["settings", "Réglages", 0],
           ...(d.ad ? [["admin", "Admin", d.ad.fr.filter((f) => f.t === "b").length + (d.ad.mc || []).filter((m) => m.t === "b").length]] : [])].map(([id, label, n]) =>
           el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
       ];
@@ -239,8 +263,8 @@
           el("div", { class: "title" }, r.t),
           el("div", { class: "meta" }, `${r.m}${r.pr ? " · " + r.pr : ""} · réponds dans ${Math.max(1, Math.round((r.e - Date.now()) / 60000))} min`),
           el("div", { class: "row" },
-            el("button", { class: "big buy", onclick: () => send({ a: "buy", id: r.i }) }, "✅ Acheter"),
-            el("button", { class: "big no", onclick: () => send({ a: "refuse", id: r.i }) }, "❌ Refuser")))),
+            el("button", { class: `big buy${changes.decide.get(r.i) === "buy" ? " picked" : ""}`, onclick: () => decide(r.i, "buy") }, changes.decide.get(r.i) === "buy" ? "✅ Acheter · choisi" : "✅ Acheter"),
+            el("button", { class: `big no${changes.decide.get(r.i) === "refuse" ? " picked" : ""}`, onclick: () => decide(r.i, "refuse") }, changes.decide.get(r.i) === "refuse" ? "❌ Refuser · choisi" : "❌ Refuser")))),
         el("h2", {}, "🔥 Achetable maintenant à ton prix"),
         offers.length === 0 ? el("div", { class: "card empty" }, "Rien en stock dans ton budget pour l'instant.") : null,
         ...offers.map((o) => el("div", { class: "card" }, el("div", { class: "item" },
@@ -249,7 +273,8 @@
             el("div", { class: "t" }, o.t),
             el("div", { class: "p" }, o.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, euros(o.c)),
             el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, `${o.m}${o.k > 1 ? ` · ${o.k} offres` : ""} · voir la page ›`)),
-          o.w ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(o.c)} chez ${o.m} ? Ton extension lance l'achat tout de suite (mêmes garde-fous qu'un ✅).`, () => send({ a: "buyNow", w: o.w })) }, "⚡ Acheter") : null))),
+          o.w ? el("button", { class: `small buy${changes.buyNow.has(o.w) ? " picked" : ""}`, onclick: () => (changes.buyNow.has(o.w) ? (changes.buyNow.delete(o.w), render())
+            : confirmThen(`Acheter « ${o.t} » à ${euros(o.c)} chez ${o.m} ? L'achat part avec ton prochain envoi (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(o.w, o.t))) }, changes.buyNow.has(o.w) ? "⚡ choisi" : "⚡ Acheter") : null))),
         (d.r || []).length > 0 ? el("h2", {}, "📅 Prochaines sorties guettées") : null,
         (d.r || []).length > 0 ? el("div", { class: "card list" }, ...d.r.map((r) => {
           const days = Math.round((r.d - new Date().setHours(0, 0, 0, 0)) / 86400000);
@@ -416,6 +441,30 @@
       draw();
     }
     let aview = "friends";
+    /**
+     * L'onglet ÉTAT (2026-10-22 : « l'extension en mobile ») : chaque rouage (surveillance, Discord, Telegram, coffre, comptes) et chaque marchand surveillé, en mots ; un tap
+     * sur un marchand ouvre sa fiche (avec ses courbes chez l'admin).
+     */
+    function stateView() {
+      const tone = { o: "ok", w: "warn", b: "no", m: "mute" };
+      const list = (d.ms || []).slice().sort((a, b) => "bwmo".indexOf(a.t) - "bwmo".indexOf(b.t) || b.rd - a.rd);
+      const counts = { o: 0, w: 0, b: 0, m: 0 };
+      for (const m of list) counts[m.t] = (counts[m.t] || 0) + 1;
+      const full = (n) => (d.ad && d.ad.mc ? d.ad.mc.find((x) => x.n === n) : null);
+      return [
+        el("h2", {}, "🩺 Tout est OK ?"),
+        el("div", { class: "health-grid" }, ...(d.hc || []).map(([label, t, detail]) => el("div", { class: `card hcell ${tone[t] || "mute"}` },
+          el("div", { class: "hlabel" }, `${t === "o" ? "✅" : t === "w" ? "⚠️" : t === "b" ? "⛔" : "➖"} ${label}`), el("div", { class: "m" }, detail)))),
+        el("h2", {}, "🏬 Marchands", el("small", {}, `${list.length}`)),
+        list.length === 0 ? el("div", { class: "card empty" }, "Mets ton extension à jour pour voir l'état des marchands ici.") : null,
+        list.length === 0 ? null : el("div", { class: "mbar" }, ...["o", "w", "b", "m"].filter((k) => counts[k] > 0).map((k) =>
+          el("span", { class: `mseg ${tone[k]}`, style: `flex:${counts[k]}`, title: `${counts[k]}` }, String(counts[k])))),
+        list.length === 0 ? null : el("div", { class: "card list" }, ...list.map((mc) => el("div", { class: "friend tap", onclick: () => merchantSheet(full(mc.n) || mc) },
+          el("span", { class: "dot" }, FRIEND_DOT[mc.t] || "⚪"),
+          el("div", { class: "grow" }, el("b", {}, mc.n), el("span", {}, mc.s), el("span", {}, `${mc.rd} page${mc.rd > 1 ? "s" : ""} lue${mc.rd > 1 ? "s" : ""} aujourd'hui`))))),
+      ];
+    }
+
     function admin() {
       const a = d.ad;
       const pick = el("div", { class: "filters" }, ...[["friends", `Amis (${a.fr.length})`], ["merchants", `Marchands (${(a.mc || []).length})`]].map(([id, label]) =>
@@ -455,10 +504,13 @@
           ...[...changes.max].map(([w, c]) => ({ a: "max", w, c })),
           ...(Object.keys(changes.set).length > 0 ? [{ a: "set", ...changes.set }] : []),
           ...[...changes.want].map(([i, on]) => ({ a: "want", i, on })),
+          ...[...changes.decide].map(([id, v]) => ({ a: v, id })),
+          ...[...changes.buyNow.keys()].map((w) => ({ a: "buyNow", w })),
         ];
+        const choices = changes.decide.size + changes.buyNow.size;
         row.replaceChildren(
-          el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; changes.want.clear(); render(); } }, "Annuler"),
-          el("button", { class: "big main", onclick: () => send({ a: "batch", ops }) }, `💾 Enregistrer ${n} changement${n > 1 ? "s" : ""}`));
+          el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; changes.want.clear(); changes.decide.clear(); changes.buyNow.clear(); render(); } }, "Annuler"),
+          el("button", { class: "big main", onclick: () => send({ a: "batch", ops }) }, choices > 0 ? `📤 Envoyer ${n} choix` : `💾 Enregistrer ${n} changement${n > 1 ? "s" : ""}`));
       } else {
         row.replaceChildren(el("button", { class: "big ghost", onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Mettre la surveillance en pause" : "▶ Reprendre la surveillance"));
       }
@@ -466,7 +518,7 @@
     }
 
     function render() {
-      const body = tab === "follows" ? follows() : tab === "releases" ? releases() : tab === "settings" ? settings() : tab === "admin" && d.ad ? admin() : home();
+      const body = tab === "follows" ? follows() : tab === "releases" ? releases() : tab === "state" ? stateView() : tab === "settings" ? settings() : tab === "admin" && d.ad ? admin() : home();
       app.replaceChildren(...[...header(), ...body].filter((node) => node !== null));
       footer();
     }
