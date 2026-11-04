@@ -205,12 +205,21 @@
     /** La FICHE d'un produit suivi : toutes ses offres, la moins chère d'abord, avec « ⚡ Acheter » sur celles en stock (2026-10-21). */
     function productSheet(f) {
       const offers = f.os && f.os.length > 0 ? f.os : [[f.m, f.c === undefined ? null : f.c, f.st, null]];
-      sheetOf(el("h3", {}, f.t), el("div", { class: "m" }, `${offers.length} offre${offers.length > 1 ? "s" : ""}${f.e ? ` · ${f.e}` : ""}`),
+      sheetOf(el("h3", {}, f.t), el("div", { class: "m" }, `${offers.length} offre${offers.length > 1 ? "s" : ""}${f.e ? ` · ${f.e}` : ""}`), f.ri ? el("div", { class: "m" }, `📅 Retour annoncé : ${f.ri}`) : null,
         el("div", { class: "scroll" }, ...offers.map(([m, c, st, w]) => el("div", { class: "offer" },
           el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, el("span", { class: `pill ${st}` }, STATE[st] || "?"), c === null ? "" : euros(c))),
           w && (st === "I" || st === "P") && c !== null ? el("button", { class: `small buy${changes.buyNow.has(w) ? " picked" : ""}`, onclick: () => (changes.buyNow.has(w) ? (changes.buyNow.delete(w), render())
             : confirmThen(`Acheter « ${f.t} » à ${euros(c)} chez ${m} ? L'achat part avec ton prochain envoi (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w, f.t))) }, changes.buyNow.has(w) ? "⚡ choisi" : "⚡ Acheter") : null))),
         el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page de l'offre la moins chère ›"));
+    }
+    /** TOUTES les offres achetables d'un produit (2026-11-02) : marchand, prix, « ⚡ Acheter » sur chacune ; la moins chère d'abord. */
+    function offersSheet(o) {
+      sheetOf(el("h3", {}, o.t), el("div", { class: "m" }, `${o.os.length} offres achetables à ton prix`),
+        el("div", { class: "scroll" }, ...o.os.map(([m, c, w, pre]) => el("div", { class: "offer" },
+          el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, pre ? el("span", { class: "pill P" }, "PRÉCO") : null, euros(c))),
+          el("button", { class: `small buy${changes.buyNow.has(w) ? " picked" : ""}`, onclick: () => (changes.buyNow.has(w) ? (changes.buyNow.delete(w), render())
+            : confirmThen(`Acheter « ${o.t} » à ${euros(c)} chez ${m} ? L'achat part avec ton prochain envoi (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w, o.t))) }, changes.buyNow.has(w) ? "⚡ choisi" : "⚡ Acheter")))),
+        el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, "voir la page de l'offre la moins chère ›"));
     }
     /** Le détail des marchands bloqués (2026-10-21). */
     function blockedSheet() {
@@ -281,9 +290,13 @@
           thumb(o.img),
           el("div", { class: "grow" },
             el("div", { class: "t" }, o.t),
-            el("div", { class: "p" }, o.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, euros(o.c)),
-            el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, `${o.m}${o.k > 1 ? ` · ${o.k} offres` : ""} · voir la page ›`)),
-          o.w ? el("button", { class: `small buy${changes.buyNow.has(o.w) ? " picked" : ""}`, onclick: () => (changes.buyNow.has(o.w) ? (changes.buyNow.delete(o.w), render())
+            el("div", { class: "p" }, o.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, o.os && o.os.length > 1 ? `dès ${euros(o.c)}` : euros(o.c)),
+            // Plusieurs offres : un tap montre CHAQUE marchand avec son prix (et « ⚡ Acheter » sur chacune) au lieu d'ouvrir seulement la moins chère.
+            o.os && o.os.length > 1
+              ? el("div", { class: "m" }, ...o.os.slice(0, 3).map(([m, c]) => el("div", {}, `${m} · ${euros(c)}`)), o.os.length > 3 ? el("div", {}, `+ ${o.os.length - 3} autre(s)`) : null,
+                el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); offersSheet(o); } }, `${o.os.length} offres · voir et choisir ›`))
+              : el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, `${o.m} · voir la page ›`)),
+          o.w && !(o.os && o.os.length > 1) ? el("button", { class: `small buy${changes.buyNow.has(o.w) ? " picked" : ""}`, onclick: () => (changes.buyNow.has(o.w) ? (changes.buyNow.delete(o.w), render())
             : confirmThen(`Acheter « ${o.t} » à ${euros(o.c)} chez ${o.m} ? L'achat part avec ton prochain envoi (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(o.w, o.t))) }, changes.buyNow.has(o.w) ? "⚡ choisi" : "⚡ Acheter") : null))),
         (d.r || []).length > 0 ? el("h2", {}, "📅 Prochaines sorties guettées") : null,
         (d.r || []).length > 0 ? el("div", { class: "card list" }, ...d.r.map((r) => {
@@ -339,13 +352,22 @@
           return el("div", { class: `card follow${on ? "" : " off"}${changes.follow.has(f.w) || changes.max.has(f.w) ? " dirty" : ""}` },
             el("div", { class: "item tap", onclick: (e) => { if (e.target.tagName !== "A") productSheet(f); } }, thumb(f.img), el("div", { class: "grow" },
               el("div", { class: "t" }, f.t, f.os && f.os.length > 1 ? el("span", { class: "m" }, ` · ${f.os.length} offres ›`) : null),
-              el("div", { class: "m" }, el("span", { class: `pill ${f.st}` }, STATE[f.st] || "?"), f.c ? `${euros(f.c)} · ` : "", f.m),
+              el("div", { class: "m" }, el("span", { class: `pill ${f.st}` }, STATE[f.st] || "?"), f.c ? `${euros(f.c)}${f.n ? ` (base ${euros(f.n)})` : ""} · ` : "", f.m),
               el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page ›"))),
             el("div", { class: "ctl" }, el("div", { class: "max" }, "Ton max", input, "€", max === null && f.l ? el("span", { class: "m" }, `auto : ${euros(f.l)}`) : null), toggle));
         }),
       ];
     }
 
+    /** Le calendrier : les sorties groupées par mois (« novembre 2026 »), sans date à la fin (2026-11-02). */
+    const monthGroups = (list) => {
+      const groups = new Map();
+      for (const r of [...list].sort((a, b) => (a.d ?? Infinity) - (b.d ?? Infinity))) {
+        const label = r.d === null ? "Date pas encore connue" : new Date(r.d).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+        groups.set(label, [...(groups.get(label) || []), r]);
+      }
+      return [...groups.entries()];
+    };
     /** SORTIES (2026-10-21) : les prochaines sorties, « je la veux » d'un tap (ses produits suivis dès qu'ils apparaissent) ; envoyé avec « Enregistrer ». */
     function releases() {
       const list = d.rs || [];
@@ -353,7 +375,7 @@
       const isOn = (r) => (changes.want.has(r.i) ? changes.want.get(r.i) : r.on);
       return [
         el("p", { class: "m", style: "margin:0 4px 8px" }, "Coche une sortie : ses produits seront suivis dès qu'ils apparaissent chez les marchands, et l'achat te sera proposé dans ton budget."),
-        el("div", { class: "card list" }, ...list.map((r) => {
+        ...monthGroups(list).map(([label, rows]) => [el("h2", {}, label), el("div", { class: "card list" }, ...rows.map((r) => {
           const days = r.d === null ? null : Math.round((r.d - new Date().setHours(0, 0, 0, 0)) / 86400000);
           const toggle = el("label", { class: "switch" }, el("input", { type: "checkbox", checked: isOn(r), onchange: (e) => {
             haptic("light");
@@ -362,7 +384,10 @@
           } }), el("span", {}));
           return el("div", { class: "set" }, el("div", { class: "grow" }, el("b", {}, r.t),
             el("span", {}, r.d === null ? "date pas encore connue" : `${new Date(r.d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · ${days <= 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} j`}`)), toggle);
-        })),
+        }))]).flat(),
+        (d.rn || []).length > 0 ? el("h2", {}, "📈 Réassorts par produit") : null,
+        (d.rn || []).length > 0 ? el("div", { class: "card list" }, ...d.rn.map(([t, m, x]) => el("div", { class: "rel" }, el("div", { class: "grow" }, el("b", {}, t), el("span", {}, `${m} · ${x}`))))) : null,
+        (d.rn || []).length > 0 ? el("p", { class: "m", style: "margin:6px 4px" }, "Ces fiches sont lues plus souvent le jour indiqué.") : null,
       ];
     }
 
