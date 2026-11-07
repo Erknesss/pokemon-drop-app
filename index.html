@@ -29,6 +29,7 @@
     .chip { font-size: 12px; font-weight: 650; padding: 5px 10px; border-radius: 999px; background: var(--card); border: 0; color: var(--text); font-family: inherit; }
     .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.no { color: var(--no); }
     button.chip { cursor: pointer; } button.chip.warn { background: color-mix(in srgb, var(--warn) 14%, var(--card)); }
+    button.chip.no { border: 0; background: color-mix(in srgb, var(--no) 14%, var(--card)); }
     .tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; padding: 6px 0 10px; }
     .tabs button { flex: 1; font: inherit; font-size: 14px; font-weight: 650; padding: 9px 6px; border: 0; border-radius: 11px; background: var(--card); color: var(--hint); cursor: pointer; position: relative; }
     .tabs.five button { font-size: 12.5px; padding: 9px 2px; }
@@ -58,7 +59,7 @@
     .req .meta { color: var(--hint); font-size: 13px; margin-bottom: 10px; }
     .row { display: flex; gap: 8px; align-items: center; }
     button.big { font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 11px 12px; flex: 1; cursor: pointer; }
-    button.buy { background: var(--ok); color: #fff; } button.no { background: transparent; color: var(--no); border: 2px solid var(--no); }
+    button.buy { background: var(--ok); color: #fff; } button.buy.small { background: transparent; color: var(--ok); border: 2px solid var(--ok); padding: 5px 9px; } button.buy.small.picked { background: var(--ok); color: #fff; } button.no { background: transparent; color: var(--no); border: 2px solid var(--no); }
     button.ghost { background: var(--card); color: var(--text); } button.main { background: var(--btn); color: var(--btn-text); }
     button.small { font: inherit; font-size: 13px; font-weight: 700; border: 0; border-radius: 10px; padding: 7px 11px; cursor: pointer; white-space: nowrap; }
     .item { display: flex; gap: 12px; align-items: center; }
@@ -244,6 +245,18 @@
       setTimeout(() => input.focus(), 50);
     }
 
+    // Une seule ligne d'état (2026-11-08) : « Tout va bien », ou la pastille du seul souci, ou « N choses à voir » qui déplie les pastilles.
+    let chipsOpen = false;
+    function statusChips() {
+      const items = [];
+      if (!d.on) items.push(el("button", { class: "chip warn", onclick: () => { tab = "settings"; render(); window.scrollTo(0, 0); } }, "⏸ En pause · Reprendre"));
+      if (d.v === false) items.push(d.k ? el("button", { class: "chip warn", onclick: unlockSheet }, "🔒 Coffre fermé · Ouvrir") : el("span", { class: "chip warn" }, "🔒 Coffre fermé"));
+      if ((d.b || 0) > 0) items.push(el("button", { class: "chip no", onclick: blockedSheet }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""} ›`));
+      if (items.length === 0) return el("div", { class: "chips" }, el("span", { class: "chip ok" }, "● Tout va bien"));
+      if (items.length === 1) return el("div", { class: "chips" }, items[0]);
+      return el("div", { class: "chips" }, el("button", { class: "chip warn", onclick: () => { chipsOpen = !chipsOpen; render(); } }, `⚠ ${items.length} choses à voir ${chipsOpen ? "⌃" : "›"}`), ...(chipsOpen ? items : []));
+    }
+
     function header() {
       const reqs = (d.p || []).filter((r) => r.e > Date.now());
       return [
@@ -251,11 +264,7 @@
         el("header", {}, el("div", { class: "logo" }, "⚡"), el("div", { class: "grow" }, el("h1", {}, "Mon tableau"), el("div", { class: "sub" }, `${d.n ? d.n + " · " : ""}mis à jour ${ago(d.at)}`)),
           el("button", { class: "chip", title: "Demander un tableau neuf à ton extension", onclick: () => send({ a: "refresh" }) }, "🔄 Actualiser")),
         Date.now() - d.at > 10 * 60000 ? el("p", { class: "old" }, `Tableau d'il y a ${ago(d.at).replace("il y a ", "")} : « 🔄 Actualiser » puis rouvre « Mon tableau ».`) : null,
-        el("div", { class: "chips" },
-          el("span", { class: `chip ${d.on ? "ok" : "warn"}` }, d.on ? "● Surveillance active" : "⏸ En pause"),
-          d.v === true ? el("span", { class: "chip ok" }, "🔓 Coffre ouvert")
-            : d.v === false ? (d.k ? el("button", { class: "chip warn", onclick: unlockSheet }, "🔒 Coffre fermé · Ouvrir") : el("span", { class: "chip warn" }, "🔒 Coffre fermé")) : null,
-          (d.b || 0) > 0 ? el("button", { class: "chip no", onclick: blockedSheet }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""} ›`) : null),
+        statusChips(),
         el("nav", { class: d.ad ? "tabs six" : "tabs five" }, ...[["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["releases", "Sorties", 0],
           ["state", "État", (d.hc || []).filter((x) => x[1] === "b").length + (d.ms || []).filter((m) => m.t === "b").length], ["settings", "Réglages", 0],
           ...(d.ad ? [["admin", "Admin", d.ad.fr.filter((f) => f.t === "b").length + (d.ad.mc || []).filter((m) => m.t === "b").length]] : [])].map(([id, label, n]) =>
@@ -312,7 +321,7 @@
           el("div", { class: "stat" }, el("b", {}, d.s ? d.s.f : 0), el("span", {}, "produits suivis")),
           el("div", { class: "stat" }, el("b", {}, d.s ? d.s.i : 0), el("span", {}, "en stock")),
           el("div", { class: "stat" }, el("b", {}, offers.length), el("span", {}, "à ton prix"))),
-        el("p", { class: "m", style: "margin:10px 4px" }, "🟢 L'heure du bouton à gauche de la zone de saisie (« PC hh:mm ») dit quand ton PC a donné signe de vie : si elle ne bouge plus, il est éteint, en veille ou Brave est fermé."),
+        el("p", { class: "m", style: "margin:10px 4px" }, "Le bouton à gauche de la zone de saisie affiche « PC hh:mm » : l'heure du dernier signe de vie de ton PC. Si elle ne bouge plus, il est éteint ou en veille."),
       ];
     }
 
@@ -337,7 +346,7 @@
         ...shown.map((f) => {
           const on = isOn(f);
           const max = changes.max.has(f.w) ? changes.max.get(f.w) : f.x === undefined ? null : f.x;
-          const input = el("input", { class: "euro", inputmode: "decimal", value: max === null ? "" : typed(max), placeholder: f.l ? "auto" : "budget", "aria-label": "Ton max en euros" });
+          const input = el("input", { class: "euro", inputmode: "decimal", value: max === null ? "" : typed(max), placeholder: f.l ? typed(f.l) : "aucun", "aria-label": "Ton max en euros" });
           input.addEventListener("change", () => {
             const cents = parseEuros(input.value);
             if (cents === undefined) { input.value = max === null ? "" : typed(max); alert("Montant illisible : écris par exemple 80 ou 79,90."); return; }
@@ -405,6 +414,10 @@
       });
       const al = settingOf("al");
       return [
+        el("h2", {}, "👁 Surveillance"),
+        el("div", { class: "card list" },
+          set("Surveillance des produits", d.on ? "Active : l'extension lit tes produits suivis." : "En pause : plus rien n'est lu. Touche pour reprendre.",
+            el("button", { class: `small ${d.on ? "ghost" : "main"}`, onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Pause" : "▶ Reprendre"))),
         el("h2", {}, "🛒 Achat"),
         el("div", { class: "card list" },
           set("Achat automatique", "Après ton ✅, l'extension passe la commande. Coupé : la page s'ouvre pour finir à la main.", sw(settingOf("ab"), (v) => change("ab", v))),
@@ -548,9 +561,9 @@
           el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; changes.want.clear(); changes.decide.clear(); changes.buyNow.clear(); changes.quick.clear(); render(); } }, "Annuler"),
           el("button", { class: "big main", onclick: () => send({ a: "batch", ops }) }, choices > 0 ? `📤 Envoyer ${n} choix` : `💾 Enregistrer ${n} changement${n > 1 ? "s" : ""}`));
       } else {
-        row.replaceChildren(el("button", { class: "big ghost", onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Mettre la surveillance en pause" : "▶ Reprendre la surveillance"));
+        row.replaceChildren();
       }
-      document.getElementById("foot").hidden = false;
+      document.getElementById("foot").hidden = n === 0;
     }
 
     function render() {
