@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <!-- Sécurité (2026-11-09) : la page ne charge que le script officiel de Telegram, n'appelle aucun serveur, et ne montre que des photos https. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://telegram.org; style-src 'unsafe-inline'; img-src https: data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Pokemon Drop Assistant</title>
+  <!--
+    MINI APP TELEGRAM de Pokemon Drop Assistant (2026-10-20, v2). Page FIXE, sans serveur et sans aucune donnée : l'extension de chaque personne met son tableau (demandes
+    d'achat, offres achetables à son prix, suivis, sorties, réglages) dans le LIEN du bouton « Mon tableau » (partie après #, qui ne quitte jamais le téléphone : elle n'est
+    envoyée à aucun serveur). Les choix repartent au bot de la personne par Telegram (sendData), que son extension lit. La phrase du coffre est CHIFFRÉE ici pour l'extension
+    seule (ECDH P-256 + AES-GCM) : Telegram ne voit qu'un texte illisible. Aucun jeton, aucun appel réseau à part le script officiel de Telegram et les photos des produits.
+  -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #ffffff); --text: var(--tg-theme-text-color, #16181d); --hint: var(--tg-theme-hint-color, #7a808c);
+      --card: var(--tg-theme-secondary-bg-color, #f1f2f5); --link: var(--tg-theme-link-color, #2a7de1); --btn: var(--tg-theme-button-color, #2a7de1);
+      --btn-text: var(--tg-theme-button-text-color, #ffffff); --line: color-mix(in srgb, var(--hint) 22%, transparent);
+      --ok: #1f9d55; --no: #d64545; --warn: #d4860b; --info: #2a7de1; --mute: #8a909c;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+    main { padding: 0 14px 96px; max-width: 640px; margin: 0 auto; }
+    header { display: flex; align-items: center; gap: 11px; padding: 14px 0 10px; }
+    .logo { width: 40px; height: 40px; border-radius: 13px; background: linear-gradient(135deg, #ffcb05, #e3350d); display: grid; place-items: center; font-size: 21px; flex: none; box-shadow: 0 2px 8px #e3350d33; }
+    header h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+    header .sub { font-size: 12px; color: var(--hint); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+    .chip { font-size: 12px; font-weight: 650; padding: 5px 10px; border-radius: 999px; background: var(--card); border: 0; color: var(--text); font-family: inherit; }
+    .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.no { color: var(--no); }
+    button.chip { cursor: pointer; } button.chip.warn { background: color-mix(in srgb, var(--warn) 14%, var(--card)); }
+    button.chip.no { border: 0; background: color-mix(in srgb, var(--no) 14%, var(--card)); }
+    .tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; padding: 6px 0 10px; }
+    .tabs button { flex: 1; font: inherit; font-size: 14px; font-weight: 650; padding: 9px 6px; border: 0; border-radius: 11px; background: var(--card); color: var(--hint); cursor: pointer; position: relative; }
+    .tabs.five button { font-size: 12.5px; padding: 9px 2px; }
+    .tabs.six button { font-size: 11.5px; padding: 9px 1px; }
+    .tabs.six .dot { top: -5px; right: -2px; min-width: 14px; height: 14px; line-height: 14px; font-size: 9px; padding: 0 3px; }
+    .tabs.three button { font-size: 14px; }
+    .tabs.three .dot { top: -5px; right: -2px; }
+    .sub.warn { color: var(--warn); font-weight: 650; }
+    /* Audit (2026-11-09) : « ⏸ Pause » ressemblait à du texte sur le fond de la carte. */
+    .set button.small.ghost { background: var(--bg); border: 1.5px solid var(--line); }
+    .rel .grow > b, .rel .grow > span { display: block; white-space: normal; }
+    .seg2 { display: flex; gap: 4px; } .seg2 button { font: inherit; font-size: 13px; font-weight: 650; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
+    .seg2 button.on { background: var(--btn); color: var(--btn-text); border-color: var(--btn); }
+    .health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .hcell { margin: 0; padding: 10px 12px; }
+    .hcell .hlabel { font-weight: 700; margin-bottom: 2px; }
+    .hcell.no { border-color: var(--no); } .hcell.warn { border-color: var(--warn); }
+    .mbar { display: flex; gap: 3px; margin: 0 4px 10px; height: 22px; }
+    .mseg { display: grid; place-items: center; border-radius: 6px; font-size: 11px; font-weight: 700; color: #fff; min-width: 22px; }
+    .mseg.ok { background: var(--ok); } .mseg.warn { background: var(--warn); } .mseg.no { background: var(--no); } .mseg.mute { background: var(--mute); }
+    .tabs.five .dot { top: -5px; right: -2px; min-width: 14px; height: 14px; line-height: 14px; font-size: 9px; padding: 0 3px; }
+    .friend { display: flex; gap: 10px; align-items: flex-start; padding: 11px 2px; border-bottom: 1px solid var(--line); } .friend:last-child { border-bottom: 0; }
+    .friend .dot { font-size: 15px; line-height: 1.4; } .friend .grow span { display: block; font-size: 12.5px; color: var(--hint); }
+    .mfig { margin: 10px 0 4px; } .mchart { display: block; width: 100%; height: auto; }
+    .mchart .mbar { fill: var(--btn); } .mchart .mhit { fill: transparent; } .mchart .mhit:active, .mchart .mhit:hover { fill: var(--text); opacity: .08; }
+    .mchart .mbase { stroke: var(--line); stroke-width: 1; } .mchart .maxis { fill: var(--hint); font-size: 9px; }
+    .tabs button.on { background: var(--btn); color: var(--btn-text); }
+    button.picked { outline: 3px solid var(--text); outline-offset: -3px; font-weight: 700; }
+    .tabs .dot { position: absolute; top: 5px; right: 8px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--no); color: #fff; font-size: 10px; line-height: 16px; padding: 0 4px; }
+    h2 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--hint); margin: 18px 4px 8px; display: flex; justify-content: space-between; align-items: baseline; }
+    h2 small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+    .card { background: var(--card); border-radius: 15px; padding: 12px; margin-bottom: 9px; }
+    .req { border: 2px solid color-mix(in srgb, var(--ok) 45%, transparent); }
+    .req .title { font-weight: 700; margin-bottom: 2px; }
+    .req .meta { color: var(--hint); font-size: 13px; margin-bottom: 10px; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    button.big { font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 11px 12px; flex: 1; cursor: pointer; }
+    button.buy { background: var(--ok); color: #fff; } button.buy.small { background: transparent; color: var(--ok); border: 2px solid var(--ok); padding: 5px 9px; } button.buy.small.picked { background: var(--ok); color: #fff; } button.no { background: transparent; color: var(--no); border: 2px solid var(--no); }
+    button.ghost { background: var(--card); color: var(--text); } button.main { background: var(--btn); color: var(--btn-text); }
+    button.small { font: inherit; font-size: 13px; font-weight: 700; border: 0; border-radius: 10px; padding: 7px 11px; cursor: pointer; white-space: nowrap; }
+    .item { display: flex; gap: 12px; align-items: center; }
+    .thumb { width: 60px; height: 60px; border-radius: 11px; object-fit: contain; background: #fff; flex: none; }
+    div.thumb { display: grid; place-items: center; font-size: 25px; background: color-mix(in srgb, var(--hint) 12%, var(--bg)); }
+    .grow { flex: 1; min-width: 0; }
+    .t { font-weight: 600; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .p { font-weight: 800; font-size: 16px; margin-top: 2px; }
+    .m { font-size: 12px; color: var(--hint); }
+    a.m { color: var(--link); text-decoration: none; }
+    .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; margin-right: 6px; vertical-align: 1px; }
+    .pill.I { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); } .pill.P { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+    .pill.S { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); } .pill.O, .pill.U { background: color-mix(in srgb, var(--mute) 16%, transparent); color: var(--mute); }
+    .pill.R { background: color-mix(in srgb, var(--no) 14%, transparent); color: var(--no); }
+    .empty { color: var(--hint); text-align: center; padding: 18px 8px; }
+    .stats { display: flex; gap: 8px; }
+    .stat { flex: 1; text-align: center; background: var(--card); border-radius: 15px; padding: 12px 6px; }
+    .stat b { display: block; font-size: 23px; letter-spacing: -.02em; } .stat span { font-size: 12px; color: var(--hint); }
+    .rel { display: flex; justify-content: space-between; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
+    .rel:last-child { border-bottom: 0; } .rel b { font-weight: 600; } .rel span { color: var(--hint); font-size: 13px; white-space: nowrap; }
+    .filters { display: flex; gap: 6px; margin: 0 0 10px; overflow-x: auto; }
+    .filters button { font: inherit; font-size: 13px; font-weight: 650; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; white-space: nowrap; }
+    .filters button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+    .follow .ctl { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .follow.off .item { opacity: .55; }
+    .follow.dirty { outline: 2px solid var(--btn); }
+    .max { display: flex; align-items: center; gap: 6px; flex: 1; font-size: 13px; color: var(--hint); }
+    input.euro { width: 82px; font: inherit; font-size: 15px; font-weight: 700; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--text); text-align: right; }
+    .switch { position: relative; width: 46px; height: 28px; flex: none; }
+    .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .switch span { position: absolute; inset: 0; border-radius: 14px; background: color-mix(in srgb, var(--mute) 45%, transparent); transition: background .15s; cursor: pointer; }
+    .switch span::after { content: ""; position: absolute; width: 22px; height: 22px; top: 3px; left: 3px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0003; transition: transform .15s; }
+    .switch input:checked + span { background: var(--ok); } .switch input:checked + span::after { transform: translateX(18px); }
+    .set { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
+    .set:last-child { border-bottom: 0; } .set .grow b { display: block; font-weight: 600; } .set .grow span { font-size: 12.5px; color: var(--hint); }
+    .card.list { padding: 2px 12px; }
+    .foot { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); z-index: 6; }
+    .foot .row { max-width: 640px; margin: 0 auto; }
+    .old { color: var(--warn); font-size: 12.5px; text-align: center; margin: -4px 0 10px; }
+    .sheet { position: fixed; inset: 0; background: #0007; display: grid; align-items: end; z-index: 9; }
+    .sheet > div { background: var(--bg); border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); max-width: 640px; width: 100%; margin: 0 auto; }
+    .sheet h3 { margin: 0 0 6px; font-size: 17px; } .sheet p { margin: 0 0 12px; color: var(--hint); font-size: 13px; }
+    .sheet h3 { margin: 0 0 4px; } .sheet .offer { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); } .sheet .offer:last-child { border-bottom: 0; }
+    .sheet .scroll { max-height: 60vh; overflow-y: auto; }
+    .search { width: 100%; font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); margin: 0 0 8px; }
+    .hist { display: flex; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); } .hist:last-child { border-bottom: 0; } .hist .grow span { display: block; color: var(--hint); font-size: 12.5px; }
+    .tap { cursor: pointer; }
+    .sheet input { width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <main id="app"><p class="empty">Chargement…</p></main>
+  <div class="foot" id="foot" hidden><div class="row" id="footRow"></div></div>
+  <script>
+    "use strict";
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); }
+    const app = document.getElementById("app");
+    const el = (tag, attrs, ...children) => {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs || {})) {
+        if (v === null || v === undefined || v === false) continue;
+        if (k === "class") node.className = v; else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else if (k === "checked" || k === "value") node[k] = v; else node.setAttribute(k, v);
+      }
+      for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : String(c));
+      return node;
+    };
+    const euros = (cents) => (cents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+    const typed = (cents) => (cents / 100).toFixed(2).replace(".", ",").replace(",00", "");
+    // Au-delà de 48 h : en jours (« il y a 4 j », pas « il y a 96 h »).
+    const ago = (at) => { const min = Math.round((Date.now() - at) / 60000); return min < 1 ? "à l'instant" : min < 60 ? `il y a ${min} min` : min < 48 * 60 ? `il y a ${Math.round(min / 60)} h` : `il y a ${Math.round(min / 1440)} j`; };
+    const haptic = (kind) => { try { tg && tg.HapticFeedback && (kind === "select" ? tg.HapticFeedback.selectionChanged() : tg.HapticFeedback.impactOccurred(kind)); } catch (e) { /* sans vibreur */ } };
+    // Ouvert depuis un bouton du CLAVIER (seul cas où Telegram transmet le choix au bot) : initData y est vide, la plateforme, elle, est connue.
+    const canSend = () => !!(tg && typeof tg.sendData === "function" && tg.platform && tg.platform !== "unknown");
+    /** Un choix renvoyé au bot de la personne (lu par son extension). L'appli se ferme ensuite. */
+    const send = (action) => {
+      if (!canSend()) { alert("Ouvre « Mon tableau » depuis le bouton en bas de ta conversation avec ton bot : c'est lui qui transmet ton choix."); return; }
+      haptic("medium");
+      tg.sendData(JSON.stringify(action));
+    };
+    const confirmThen = (text, then) => { if (tg && typeof tg.showConfirm === "function" && tg.platform !== "unknown") tg.showConfirm(text, (ok) => ok && then()); else if (confirm(text)) then(); };
+    const open = (url) => { if (/^https:\/\//.test(url)) { if (tg) tg.openLink(url); else window.open(url, "_blank", "noopener"); } };
+    const thumb = (src) => {
+      const ph = () => el("div", { class: "thumb" }, "🎴");
+      if (!src) return ph();
+      // Une photo que le marchand refuse de montrer hors de son site : la vignette de remplacement.
+      return el("img", { class: "thumb", src, alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: (e) => e.target.replaceWith(ph()) });
+    };
+    // R : en stock mais au-dessus de ton budget (revendeur) ; U : pas relu récemment (lectures en échec), son dernier état n'est pas sûr (2026-10-22).
+    const STATE = { I: "En stock", P: "Précommande", R: "Prix trop haut", S: "Bientôt", O: "Épuisé", U: "Pas relu" };
+    const ALERTS = [["En stock", "retour en stock"], ["Précommande", "précommande ouverte"], ["Baisse de prix", "un produit suivi baisse"], ["Bientôt disponible", "fiche annoncée"], ["Épuisé", "plus en stock"], ["Blocage à résoudre", "captcha ou accès limité"]];
+    const parseEuros = (text) => { const t = text.trim().replace(/\s|€/g, "").replace(",", "."); if (t === "") return null; const n = Number(t); return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 100) : undefined; };
+
+    async function decode(hash) {
+      const raw = new URLSearchParams(hash.replace(/^#/, "")).get("d");
+      if (!raw) return null;
+      const b64 = raw.slice(2).replace(/-/g, "+").replace(/_/g, "/");
+      const bytes = Uint8Array.from(atob(b64 + "===".slice((b64.length + 3) % 4)), (c) => c.charCodeAt(0));
+      let text;
+      if (raw.startsWith("z.")) {
+        if (typeof DecompressionStream === "undefined") throw new Error("Mets Telegram à jour pour voir ton tableau.");
+        text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+      } else text = new TextDecoder().decode(bytes);
+      return JSON.parse(text);
+    }
+    const b64u = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const fromB64u = (text) => { const b = text.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(b + "===".slice((b.length + 3) % 4)), (c) => c.charCodeAt(0)); };
+    /** La phrase du coffre chiffrée pour l'extension seule : clé jetable + clé publique de l'extension → clé commune → AES-GCM. */
+    async function seal(key, passphrase) {
+      const mine = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey"]);
+      const theirs = await crypto.subtle.importKey("raw", fromB64u(key.pub), { name: "ECDH", namedCurve: "P-256" }, false, []);
+      const aes = await crypto.subtle.deriveKey({ name: "ECDH", public: theirs }, mine.privateKey, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const c = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aes, new TextEncoder().encode(JSON.stringify({ p: passphrase, t: Date.now() }))));
+      return { a: "unlock", k: key.id, e: b64u(new Uint8Array(await crypto.subtle.exportKey("raw", mine.publicKey))), iv: b64u(iv), c: b64u(c) };
+    }
+
+    // --- État de la page --------------------------------------------------------------------------------------------------------
+    let d = null;
+    let tab = "home";
+    let filter = "all";
+    /** Recherche et filtre par extension dans Suivis (2026-10-21). */
+    let query = "";
+    let ext = "";
+    /** Les changements pas encore envoyés : un seul envoi pour tout (l'appli se ferme après un envoi). */
+    // decide : demande → "buy" | "refuse" ; buyNow : offre → libellé (2026-10-22 : PANIER DE CHOIX, l'appli ne se ferme qu'à l'envoi).
+    const changes = { follow: new Map(), max: new Map(), set: {}, want: new Map(), decide: new Map(), buyNow: new Map(), quick: new Map() };
+    const changeCount = () => changes.follow.size + changes.max.size + Object.keys(changes.set).length + changes.want.size + changes.decide.size + changes.buyNow.size + changes.quick.size;
+    /** Les changements du panier (réglages, suivis, sorties), dans l'ordre d'envoi. */
+    const pendingOps = () => [
+      ...[...changes.follow].map(([w, on]) => ({ a: "follow", w, on })),
+      ...[...changes.max].map(([w, c]) => ({ a: "max", w, c })),
+      ...(Object.keys(changes.set).length > 0 ? [{ a: "set", ...changes.set }] : []),
+      ...[...changes.want].map(([i, on]) => ({ a: "want", i, on })),
+    ];
+    /**
+     * UN ACHAT PART AU PREMIER GESTE (audit T7 du 2026-11-09 : « ✅ Acheter » ne faisait que choisir, il fallait encore « Envoyer 1 choix » ; fermer l'appli entre les deux perdait
+     * l'achat). Le choix part tout de suite, avec ce qui attendait dans le panier (l'appli se ferme après un envoi : rien n'est perdu).
+     */
+    // « quick » n'existe que dans un envoi groupé (parseAppAction).
+    // Toujours en envoi groupé, avec le jeton d'achat du lien (d.bt) : le PC refuse un achat sans lui (voir buyTokenValid).
+    const sendNow = (op) => send({ a: "batch", ops: [...pendingOps(), op], ...(d.bt ? { t: d.bt } : {}) });
+    /** Répondre à une demande d'achat : part tout de suite. */
+    const decide = (id, v) => sendNow({ a: v, id });
+    /** « ⚡ Acheter » une offre (après confirmation) : part tout de suite. */
+    const pickBuyNow = (w) => sendNow({ a: "buyNow", w });
+    const plain = (t) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    /** Une fenêtre du bas (fiche produit, blocages) ; un tap à côté la ferme. */
+    const sheetOf = (...children) => {
+      const sheet = el("div", { class: "sheet", onclick: (e) => { if (e.target === sheet) sheet.remove(); } }, el("div", {}, ...children, el("button", { class: "big ghost", style: "margin-top:12px;width:100%", onclick: () => sheet.remove() }, "Fermer")));
+      document.body.append(sheet);
+      return sheet;
+    };
+    /** La FICHE d'un produit suivi : toutes ses offres, la moins chère d'abord, avec « ⚡ Acheter » sur celles en stock (2026-10-21). */
+    function productSheet(f) {
+      const offers = f.os && f.os.length > 0 ? f.os : [[f.m, f.c === undefined ? null : f.c, f.st, null]];
+      sheetOf(el("h3", {}, f.t), el("div", { class: "m" }, `${offers.length} offre${offers.length > 1 ? "s" : ""}${f.e ? ` · ${f.e}` : ""}`), f.ri ? el("div", { class: "m" }, `📅 Retour annoncé : ${f.ri}`) : null,
+        el("div", { class: "scroll" }, ...offers.map(([m, c, st, w]) => el("div", { class: "offer" },
+          el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, el("span", { class: `pill ${st}` }, STATE[st] || "?"), c === null ? "" : euros(c))),
+          w && (st === "I" || st === "P") && c !== null ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${f.t} » à ${euros(c)} chez ${m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w)) }, "⚡ Acheter") : null))),
+        el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page de l'offre la moins chère ›"));
+    }
+    /** TOUTES les offres achetables d'un produit (2026-11-02) : marchand, prix, « ⚡ Acheter » sur chacune ; la moins chère d'abord. */
+    function offersSheet(o) {
+      sheetOf(el("h3", {}, o.t), el("div", { class: "m" }, `${o.os.length} offres achetables à ton prix`),
+        el("div", { class: "scroll" }, ...o.os.map(([m, c, w, pre]) => el("div", { class: "offer" },
+          el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, pre ? el("span", { class: "pill P" }, "PRÉCO") : null, euros(c))),
+          el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(c)} chez ${m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w)) }, "⚡ Acheter")))),
+        el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, "voir la page de l'offre la moins chère ›"));
+    }
+    /** Le détail des marchands bloqués (2026-10-21). */
+    function blockedSheet() {
+      sheetOf(el("h3", {}, "⛔ Marchands bloqués"), el("div", { class: "m" }, "Ton assistant ne les relit plus pour l'instant ; rien à faire, il réessaie seul."),
+        ...(d.bl || []).map((b) => el("div", { class: "offer" }, el("div", { class: "grow" }, el("b", {}, b.m), el("div", { class: "m" }, `${b.w}${b.u ? ` · reprise vers ${new Date(b.u).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}`)))));
+    }
+    const settingOf = (key) => (key in changes.set ? changes.set[key] : d.g ? d.g[key] : undefined);
+
+    function unlockSheet() {
+      const input = el("input", { type: "password", placeholder: "Phrase du coffre", autocomplete: "off", enterkeyhint: "send" });
+      const go = async () => {
+        if (input.value === "") return;
+        try { send(await seal(d.k, input.value)); } catch (e) { alert(`Chiffrement impossible : ${e.message}`); }
+      };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+      const sheet = el("div", { class: "sheet", onclick: (e) => { if (e.target === sheet) sheet.remove(); } }, el("div", {},
+        el("h3", {}, "🔓 Ouvrir le coffre"),
+        el("p", {}, `Ta phrase est chiffrée ici, sur ton téléphone, pour ${d.pg ? "ton programme" : "ton extension"} seul${d.pg ? "" : "e"} : Telegram ne voit qu'un texte illisible. L'ordinateur doit être allumé.`),
+        input,
+        el("div", { class: "row" }, el("button", { class: "big ghost", onclick: () => sheet.remove() }, "Annuler"), el("button", { class: "big main", onclick: go }, "Ouvrir"))));
+      document.body.append(sheet);
+      setTimeout(() => input.focus(), 50);
+    }
+
+    // Une seule ligne d'état (2026-11-08) : « Tout va bien », ou la pastille du seul souci, ou « N choses à voir » qui déplie les pastilles.
+    let chipsOpen = false;
+    function statusChips() {
+      const items = [];
+      if (!d.on) items.push(el("button", { class: "chip warn", onclick: () => { tab = "settings"; render(); window.scrollTo(0, 0); } }, "⏸ En pause · Reprendre"));
+      if (d.v === false) items.push(d.k ? el("button", { class: "chip warn", onclick: unlockSheet }, "🔒 Coffre fermé · Ouvrir") : el("span", { class: "chip warn" }, "🔒 Coffre fermé"));
+      if ((d.b || 0) > 0) items.push(el("button", { class: "chip no", onclick: blockedSheet }, `⛔ ${d.b} marchand${d.b > 1 ? "s" : ""} bloqué${d.b > 1 ? "s" : ""} ›`));
+      if (items.length === 0) return el("div", { class: "chips" }, el("span", { class: "chip ok" }, "● Tout va bien"));
+      if (items.length === 1) return el("div", { class: "chips" }, items[0]);
+      return el("div", { class: "chips" }, el("button", { class: "chip warn", onclick: () => { chipsOpen = !chipsOpen; render(); } }, `⚠ ${items.length} choses à voir ${chipsOpen ? "⌃" : "›"}`), ...(chipsOpen ? items : []));
+    }
+
+    /**
+     * AFFICHAGE (2026-11-09, refonte « simple ») : « simple » = 3 onglets (Accueil, Mes produits avec les sorties, Réglages avec l'état et l'admin), « complet » = les onglets
+     * habituels. Choisi dans Réglages, gardé sur ce téléphone ; par défaut simple chez les amis, complet chez l'admin.
+     */
+    const VIEW_KEY = "pda.app.view";
+    const viewMode = () => { try { const v = localStorage.getItem(VIEW_KEY); if (v === "simple" || v === "complete") return v; } catch (e) { /* sans stockage */ } return d.ad ? "complete" : "simple"; };
+    const setViewMode = (v) => { try { localStorage.setItem(VIEW_KEY, v); } catch (e) { /* sans stockage : pour cette ouverture seulement */ } forcedView = v; tab = "settings"; render(); };
+    let forcedView = null;
+    const simpleView = () => (forcedView || viewMode()) === "simple";
+
+    function header() {
+      const reqs = (d.p || []).filter((r) => r.e > Date.now());
+      const old = Date.now() - d.at > 10 * 60000;
+      const stateBad = (d.hc || []).filter((x) => x[1] === "b").length + (d.ms || []).filter((m) => m.t === "b").length;
+      const adminBad = d.ad ? d.ad.fr.filter((f) => f.t === "b").length + (d.ad.mc || []).filter((m) => m.t === "b").length : 0;
+      const tabs = simpleView()
+        ? [["home", "Accueil", reqs.length], ["follows", "Mes produits", 0], ["settings", "Réglages", stateBad + adminBad]]
+        : [["home", "Accueil", reqs.length], ["follows", "Suivis", 0], ["releases", "Sorties", 0], ["state", "État", stateBad], ["settings", "Réglages", 0], ...(d.ad ? [["admin", "Admin", adminBad]] : [])];
+      if (!tabs.some(([id]) => id === tab)) tab = tab === "releases" ? "follows" : tab === "state" || tab === "admin" ? "settings" : "home";
+      return [
+        // « 🔄 Actualiser » (2026-10-21) : un bouton « Mon tableau » neuf arrive tout de suite (1 à 2 s), à rouvrir. Un tableau ancien : dit sur la même ligne (audit T4).
+        el("header", {}, el("div", { class: "logo" }, "⚡"), el("div", { class: "grow" }, el("h1", {}, "Mon tableau"),
+          el("div", { class: old ? "sub warn" : "sub" }, old ? `⚠ vieux de ${ago(d.at).replace("il y a ", "")} · touche 🔄` : `${d.n ? d.n + " · " : ""}mis à jour ${ago(d.at)}`)),
+          el("button", { class: "chip", title: "Demander un tableau neuf", onclick: () => send({ a: "refresh" }) }, "🔄 Actualiser")),
+        statusChips(),
+        el("nav", { class: `tabs ${tabs.length === 3 ? "three" : tabs.length === 6 ? "six" : "five"}` }, ...tabs.map(([id, label, n]) =>
+          el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
+      ];
+    }
+
+    function home() {
+      const reqs = (d.p || []).filter((r) => r.e > Date.now());
+      const offers = d.o || [];
+      return [
+        reqs.length > 0 ? el("h2", {}, `🛒 Demandes d'achat`, el("small", {}, `${reqs.length}`)) : null,
+        ...reqs.map((r) => el("div", { class: "card req" },
+          el("div", { class: "title" }, r.t),
+          el("div", { class: "meta" }, `${r.m}${r.pr ? " · " + r.pr : ""} · réponds dans ${Math.max(1, Math.round((r.e - Date.now()) / 60000))} min`),
+          el("div", { class: "row" },
+            el("button", { class: "big buy", onclick: () => decide(r.i, "buy") }, "✅ Acheter"),
+            el("button", { class: "big no", onclick: () => decide(r.i, "refuse") }, "❌ Refuser")),
+          el("div", { class: "m", style: "margin-top:6px" }, "Un tap suffit : la réponse part tout de suite, et le résultat arrive dans la conversation."))),
+        // Les NOUVEAUX articles vus par le guet (3 h) : « ⚡ Acheter » au panier, comme sous l'alerte Telegram (2026-10-22).
+        (d.nq || []).length > 0 ? el("h2", {}, "🆕 Nouveaux articles", el("small", {}, `${d.nq.length}`)) : null,
+        ...(d.nq || []).map((n) => el("div", { class: "card" }, el("div", { class: "item" },
+          el("div", { class: "grow" },
+            el("div", { class: "t" }, n.t),
+            el("div", { class: "p" }, n.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, n.c === null ? "prix à voir" : euros(n.c)),
+            el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(n.u); } }, `${n.m} · voir la page ›`)),
+          el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${n.t} »${n.c === null ? "" : ` à ${euros(n.c)}`} chez ${n.m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => sendNow({ a: "quick", q: n.q })) },
+            "⚡ Acheter")))),
+        el("h2", {}, "🔥 Achetable maintenant à ton prix"),
+        offers.length === 0 ? el("div", { class: "card empty" }, "Rien en stock dans ton budget pour l'instant.") : null,
+        ...offers.map((o) => el("div", { class: "card" }, el("div", { class: "item" },
+          thumb(o.img),
+          el("div", { class: "grow" },
+            el("div", { class: "t" }, o.t),
+            el("div", { class: "p" }, o.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, o.os && o.os.length > 1 ? `dès ${euros(o.c)}` : euros(o.c)),
+            // Plusieurs offres : un tap montre CHAQUE marchand avec son prix (et « ⚡ Acheter » sur chacune) au lieu d'ouvrir seulement la moins chère.
+            o.os && o.os.length > 1
+              ? el("div", { class: "m" }, ...o.os.slice(0, 3).map(([m, c]) => el("div", {}, `${m} · ${euros(c)}`)), o.os.length > 3 ? el("div", {}, `+ ${o.os.length - 3} autre(s)`) : null,
+                el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); offersSheet(o); } }, `${o.os.length} offres · voir et choisir ›`))
+              : el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, `${o.m} · voir la page ›`)),
+          o.w && !(o.os && o.os.length > 1) ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(o.c)} chez ${o.m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(o.w)) }, "⚡ Acheter") : null))),
+        (d.r || []).length > 0 ? el("h2", {}, "📅 Prochaines sorties guettées") : null,
+        (d.r || []).length > 0 ? el("div", { class: "card list" }, ...d.r.map((r) => {
+          const days = Math.round((r.d - new Date().setHours(0, 0, 0, 0)) / 86400000);
+          return el("div", { class: "rel" }, el("b", {}, r.t), el("span", {}, `${new Date(r.d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · ${days <= 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} j`}`));
+        })) : null,
+        (d.h || []).length > 0 ? el("h2", {}, "🧾 Mes derniers achats") : null,
+        // L'ISSUE écrite (audit T10 du 2026-11-09) : « ✅ » seul ne disait pas si c'était acheté, raté ou à finir.
+        (d.h || []).length > 0 ? el("div", { class: "card list" }, ...d.h.map((x) => {
+          const [icon, word] = outcomeOf(x);
+          return el("div", { class: "hist" }, el("b", {}, icon),
+            el("div", { class: "grow" }, el("b", {}, x.t), el("span", {}, `${word} · ${x.m} · ${new Date(x.at).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`)));
+        })) : null,
+        el("h2", {}, "📦 En bref"),
+        el("div", { class: "stats" },
+          el("div", { class: "stat" }, el("b", {}, d.s ? d.s.f : 0), el("span", {}, "produits suivis")),
+          el("div", { class: "stat" }, el("b", {}, d.s ? d.s.i : 0), el("span", {}, "en stock")),
+          el("div", { class: "stat" }, el("b", {}, offers.length), el("span", {}, "à ton prix"))),
+      ];
+    }
+    /** L'issue d'une demande tranchée (AppHistory.o) : icône et mots. */
+    const OUTCOME = { B: ["✅", "acheté"], C: ["💳", "paiement cliqué : vérifie tes commandes"], F: ["⚠️", "pas acheté"], U: ["↗️", "à finir sur la page"], N: ["⚙️", "marchand pas configuré"] };
+    function outcomeOf(x) {
+      if (x.v === "R") return ["❌", "refusé"];
+      if (x.v === "E") return ["⌛", "expiré"];
+      if (x.o && OUTCOME[x.o]) { const [i, w] = OUTCOME[x.o]; return [i, x.o === "B" && x.p ? `${w} ${x.p}` : w]; }
+      return ["✅", "validé"];
+    }
+
+    function follows() {
+      const list = d.f || [];
+      const isOn = (f) => (changes.follow.has(f.w) ? changes.follow.get(f.w) : f.on);
+      const words = plain(query).split(/\s+/).filter(Boolean);
+      const shown = list.filter((f) => filter === "all" || (filter === "stock" && (f.st === "I" || f.st === "P")) || (filter === "off" && !isOn(f)))
+        .filter((f) => ext === "" || f.e === ext)
+        .filter((f) => words.every((w) => plain(`${f.t} ${f.e || ""} ${f.m}`).includes(w)));
+      const exts = [...new Set(list.map((f) => f.e).filter(Boolean))].sort();
+      const search = el("input", { class: "search", type: "search", placeholder: "🔍 Chercher un produit", value: query });
+      search.addEventListener("input", () => { query = search.value; const pos = search.selectionStart; render(); const again = document.querySelector(".search"); if (again) { again.focus(); again.setSelectionRange(pos, pos); } });
+      return [
+        search,
+        exts.length > 1 ? el("div", { class: "filters" }, el("button", { class: ext === "" ? "on" : null, onclick: () => { ext = ""; render(); } }, "Toutes les extensions"),
+          ...exts.map((e) => el("button", { class: ext === e ? "on" : null, onclick: () => { ext = e; haptic("select"); render(); } }, e))) : null,
+        el("div", { class: "filters" }, ...[["all", `Tous (${list.length})`], ["stock", "En stock"], ["off", "En pause"]].map(([id, label]) =>
+          el("button", { class: filter === id ? "on" : null, onclick: () => { filter = id; haptic("select"); render(); } }, label))),
+        d.s && d.s.f > list.length ? el("p", { class: "m", style: "margin:0 4px 8px" }, `Les ${list.length} premiers de tes ${d.s.f} produits (en stock d'abord) : le reste dans le tableau de bord.`) : null,
+        shown.length === 0 ? el("div", { class: "card empty" }, list.length === 0 ? "Aucun produit suivi." : "Rien dans ce filtre.") : null,
+        ...shown.map((f) => {
+          const on = isOn(f);
+          const max = changes.max.has(f.w) ? changes.max.get(f.w) : f.x === undefined ? null : f.x;
+          const input = el("input", { class: "euro", inputmode: "decimal", value: max === null ? "" : typed(max), placeholder: f.l ? typed(f.l) : "aucun", "aria-label": "Ton max en euros" });
+          input.addEventListener("change", () => {
+            const cents = parseEuros(input.value);
+            if (cents === undefined) { input.value = max === null ? "" : typed(max); alert("Montant illisible : écris par exemple 80 ou 79,90."); return; }
+            if (cents === (f.x === undefined ? null : f.x)) changes.max.delete(f.w); else changes.max.set(f.w, cents);
+            render();
+          });
+          const toggle = el("label", { class: "switch" }, el("input", { type: "checkbox", checked: on, onchange: (e) => {
+            haptic("light");
+            if (e.target.checked === f.on) changes.follow.delete(f.w); else changes.follow.set(f.w, e.target.checked);
+            render();
+          } }), el("span", {}));
+          return el("div", { class: `card follow${on ? "" : " off"}${changes.follow.has(f.w) || changes.max.has(f.w) ? " dirty" : ""}` },
+            el("div", { class: "item tap", onclick: (e) => { if (e.target.tagName !== "A") productSheet(f); } }, thumb(f.img), el("div", { class: "grow" },
+              el("div", { class: "t" }, f.t, f.os && f.os.length > 1 ? el("span", { class: "m" }, ` · ${f.os.length} offres ›`) : null),
+              el("div", { class: "m" }, el("span", { class: `pill ${f.st}` }, STATE[f.st] || "?"), f.c ? `${euros(f.c)}${f.n ? ` (base ${euros(f.n)})` : ""} · ` : "", f.m),
+              el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page ›"))),
+            el("div", { class: "ctl" }, el("div", { class: "max" }, "Ton max", input, "€", max === null && f.l ? el("span", { class: "m" }, `auto : ${euros(f.l)}`) : null), toggle));
+        }),
+      ];
+    }
+
+    /** Le calendrier : les sorties groupées par mois (« novembre 2026 »), sans date à la fin (2026-11-02). */
+    const monthGroups = (list) => {
+      const groups = new Map();
+      for (const r of [...list].sort((a, b) => (a.d ?? Infinity) - (b.d ?? Infinity))) {
+        const label = r.d === null ? "Date pas encore connue" : new Date(r.d).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+        groups.set(label, [...(groups.get(label) || []), r]);
+      }
+      return [...groups.entries()];
+    };
+    /** SORTIES (2026-10-21) : les prochaines sorties, « je la veux » d'un tap (ses produits suivis dès qu'ils apparaissent) ; envoyé avec « Enregistrer ». */
+    function releases() {
+      const list = d.rs || [];
+      if (list.length === 0) return [el("div", { class: "card empty" }, d.rs ? "Aucune sortie à venir connue." : "Mets ton assistant à jour pour voir les sorties ici.")];
+      const isOn = (r) => (changes.want.has(r.i) ? changes.want.get(r.i) : r.on);
+      return [
+        el("p", { class: "m", style: "margin:0 4px 8px" }, "Coche une sortie : ses produits seront suivis dès qu'ils apparaissent chez les marchands, et l'achat te sera proposé dans ton budget."),
+        ...monthGroups(list).map(([label, rows]) => [el("h2", {}, label), el("div", { class: "card list" }, ...rows.map((r) => {
+          const days = r.d === null ? null : Math.round((r.d - new Date().setHours(0, 0, 0, 0)) / 86400000);
+          const toggle = el("label", { class: "switch" }, el("input", { type: "checkbox", checked: isOn(r), onchange: (e) => {
+            haptic("light");
+            if (e.target.checked === r.on) changes.want.delete(r.i); else changes.want.set(r.i, e.target.checked);
+            render();
+          } }), el("span", {}));
+          return el("div", { class: "set" }, el("div", { class: "grow" }, el("b", {}, r.t),
+            el("span", {}, r.d === null ? "date pas encore connue" : `${new Date(r.d).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · ${days <= 0 ? "aujourd'hui" : days === 1 ? "demain" : `dans ${days} j`}`)), toggle);
+        }))]).flat(),
+        (d.rn || []).length > 0 ? el("h2", {}, "📈 Réassorts par produit") : null,
+        (d.rn || []).length > 0 ? el("div", { class: "card list" }, ...d.rn.map(([t, m, x]) => el("div", { class: "rel" }, el("div", { class: "grow" }, el("b", {}, t), el("span", {}, `${m} · ${x}`))))) : null,
+        (d.rn || []).length > 0 ? el("p", { class: "m", style: "margin:6px 4px" }, "Ces fiches sont lues plus souvent le jour indiqué.") : null,
+      ];
+    }
+
+    function settings() {
+      if (!d.g) return [el("div", { class: "card empty" }, "Mets ton assistant à jour pour régler depuis ici.")];
+      const change = (key, value) => { if (value === d.g[key]) delete changes.set[key]; else changes.set[key] = value; haptic("light"); render(); };
+      const sw = (checked, onchange) => el("label", { class: "switch" }, el("input", { type: "checkbox", checked, onchange: (e) => onchange(e.target.checked) }), el("span", {}));
+      const set = (title, hint, control) => el("div", { class: "set" }, el("div", { class: "grow" }, el("b", {}, title), el("span", {}, hint)), control);
+      const mg = settingOf("mg");
+      const margin = el("input", { class: "euro", inputmode: "numeric", value: mg < 0 ? "" : String(mg), placeholder: "%", "aria-label": "Marge en pourcent", disabled: mg < 0 ? "" : null });
+      margin.addEventListener("change", () => {
+        const n = Number(margin.value.replace("%", "").trim());
+        if (!Number.isInteger(n) || n < 0 || n > 100) { alert("Marge : un nombre entier de 0 à 100."); margin.value = String(mg); return; }
+        change("mg", n);
+      });
+      const al = settingOf("al");
+      // « Acheter depuis l'appli » (2026-11-09) : absent = oui.
+      const appBuy = "ap" in changes.set ? changes.set.ap : d.g.ap !== false;
+      const view = simpleView() ? "simple" : "complete";
+      return [
+        el("h2", {}, "👁 Surveillance"),
+        el("div", { class: "card list" },
+          set("Surveillance des produits", d.on ? "Active : ton assistant lit tes produits suivis." : "En pause : plus rien n'est lu. Touche pour reprendre.",
+            el("button", { class: `small ${d.on ? "ghost" : "main"}`, onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Pause" : "▶ Reprendre"))),
+        el("h2", {}, "🛒 Achat"),
+        el("div", { class: "card list" },
+          set("Achat automatique", "Après ton ✅, ton assistant passe la commande. Coupé : la page s'ouvre pour finir à la main.", sw(settingOf("ab"), (v) => change("ab", v))),
+          set("Acheter depuis l'appli", "« ✅ Acheter » et « ⚡ Acheter » ici achètent, comme le ✅ du chat (3 au plus par 10 min). Coupé : seul le ✅ du chat achète.",
+            sw(appBuy, (v) => { if (v === (d.g.ap !== false)) delete changes.set.ap; else changes.set.ap = v; haptic("light"); render(); })),
+          set("Marge au-dessus du prix normal", mg < 0 ? "Coupée : ton max = le prix normal." : `Ton max = prix normal + ${mg} % (sauf « ton max » d'un produit).`,
+            el("div", { class: "row" }, margin, sw(mg >= 0, (v) => change("mg", v ? (d.g.mg >= 0 ? d.g.mg : 10) : -1))))),
+        el("h2", {}, "🔔 Alertes"),
+        el("div", { class: "card list" },
+          ...ALERTS.map(([title, hint], i) => set(title, hint, sw((al & (1 << i)) !== 0, (v) => change("al", v ? al | (1 << i) : al & ~(1 << i))))),
+          set("Son spécial", "le carillon sur l'ordinateur", sw(settingOf("so"), (v) => change("so", v)))),
+        el("h2", {}, "🖥 Affichage"),
+        el("div", { class: "card list" },
+          set("Affichage de l'appli", view === "simple" ? "Simple : 3 onglets (Accueil, Mes produits, Réglages)." : "Complet : tous les onglets (Suivis, Sorties, État…).",
+            el("div", { class: "seg2" }, ...[["simple", "Simple"], ["complete", "Complet"]].map(([id, label]) => el("button", { class: view === id ? "on" : null, onclick: () => setViewMode(id) }, label))))),
+        el("p", { class: "m", style: "margin:12px 4px" }, "Le reste (marchands, livraison, coffre, Discord) se règle dans le tableau de bord sur ton PC."),
+      ];
+    }
+
+    /** AMIS (2026-10-21) : l'état de chaque ami, pour l'admin du serveur seulement (absent chez les amis), « Tester » et « Actualiser ». */
+    const FRIEND_DOT = { o: "🟢", w: "🟠", b: "🔴", m: "⚪" };
+    function friendSheet(f) {
+      sheetOf(el("h3", {}, `${FRIEND_DOT[f.t]} ${f.n}`), el("div", { class: "m" }, f.n === f.i ? "" : `pseudo Discord : ${f.i}`),
+        el("p", {}, f.s),
+        el("div", { class: "m" }, [f.seen ? `extension vue ${ago(f.seen)}` : "extension jamais vue", f.ver ? `version ${f.ver}` : "version inconnue (« Tester » la donne)", f.hp ? `${f.hp} demande(s) d'aide` : ""].filter(Boolean).join(" · ")),
+        el("button", { class: "big main", style: "margin-top:12px;width:100%", onclick: () => send({ a: "admin", do: "test", f: f.i }) }, `🧪 Tester ${f.n}`));
+    }
+    /** Une courbe d'activité (même dessin que le tableau de bord) : barres d'égale durée, la plus récente à droite, période et nombre au survol. */
+    const SVGNS = "http://www.w3.org/2000/svg";
+    const svgEl = (tag, attrs, text) => { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v)); if (text !== undefined) e.textContent = text; return e; };
+    const RANGES = { d: { ms: 30 * 60000, axis: ["il y a 24 h", "il y a 12 h", "maintenant"], per: "par demi-heure", span: "sur 24 h" },
+      w: { ms: 4 * 3600000, axis: ["il y a 7 j", "il y a 3 j ½", "maintenant"], per: "par 4 h", span: "sur 7 jours" },
+      m: { ms: 86400000, axis: ["il y a 30 j", "il y a 15 j", "aujourd'hui"], per: "par jour", span: "sur 30 jours" } };
+    const hm = (ms) => new Date(ms).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    const dd = (ms) => new Date(ms).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+    function chart(title, series, range, unit) {
+      const R = RANGES[range];
+      const W = 320, H = 70, TOP = 12, BASE = H - 14;
+      const max = Math.max(0, ...series), total = series.reduce((x, y) => x + y, 0);
+      const now = Date.now();
+      const end = range === "m" ? new Date(now).setHours(0, 0, 0, 0) + 86400000 : Math.floor(now / R.ms) * R.ms + R.ms;
+      const start = end - series.length * R.ms;
+      const box = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "mchart" });
+      const step = W / Math.max(1, series.length);
+      box.append(svgEl("line", { x1: 0, x2: W, y1: BASE, y2: BASE, class: "mbase" }));
+      series.forEach((n, i) => {
+        const hgt = max === 0 ? 0 : Math.max(n > 0 ? 2 : 0, ((BASE - TOP) * n) / max);
+        if (hgt > 0) box.append(svgEl("rect", { x: i * step + 0.5, y: BASE - hgt, width: Math.max(1, step - 1), height: hgt, rx: 1, class: "mbar" }));
+        const from = start + i * R.ms;
+        const hit = svgEl("rect", { x: i * step, y: 0, width: step, height: BASE, class: "mhit" });
+        hit.append(svgEl("title", {}, `${range === "m" ? dd(from + R.ms / 2) : range === "w" ? `${dd(from)} ${hm(from)}–${hm(from + R.ms)}` : `${hm(from)}–${hm(from + R.ms)}`} : ${n} ${unit}${n > 1 ? "s" : ""}`));
+        box.append(hit);
+      });
+      R.axis.forEach((label, i) => box.append(svgEl("text", { x: [0, W / 2, W][i], y: H - 2, "text-anchor": ["start", "middle", "end"][i], class: "maxis" }, label)));
+      if (max > 0) box.append(svgEl("text", { x: 0, y: 9, class: "maxis" }, `max ${max} ${R.per}`));
+      return el("div", { class: "mfig" }, el("div", { class: "m" }, `${title} — ${total} ${R.span}`), box);
+    }
+    /** La fiche d'un marchand : ses courbes (pages lues sur la période choisie, ses onglets sur 24 h) et la phrase de chaque onglet. */
+    let mrange = "d";
+    function merchantSheet(mc) {
+      const sheet = sheetOf(el("div", { id: "msheet" }));
+      const draw = () => {
+        const host = sheet.querySelector("#msheet");
+        const series = mc.r ? (mrange === "w" ? mc.r.w : mrange === "m" ? mc.r.m : mc.r.d) : undefined;
+        host.replaceChildren(...[
+          el("h3", {}, `${FRIEND_DOT[mc.t] || "⚪"} ${mc.n}`), el("p", {}, mc.s), el("div", { class: "m" }, `${mc.rd} page${mc.rd > 1 ? "s" : ""} lue${mc.rd > 1 ? "s" : ""} aujourd'hui`),
+          el("div", { class: "filters", style: "margin-top:10px" }, ...[["d", "24 h"], ["w", "7 jours"], ["m", "1 mois"]].map(([id, label]) =>
+            el("button", { class: mrange === id ? "on" : null, onclick: () => { mrange = id; haptic("select"); draw(); } }, label))),
+          series ? chart("Pages lues", series, mrange, "page") : el("p", { class: "m" }, "Courbe non transmise (lien trop long) : ouvre le Diagnostic du tableau de bord."),
+          mrange === "d" && mc.l ? chart("Onglet de lecture", mc.l, "d", "page") : null,
+          mrange === "d" && mc.c ? chart("Onglet du compte", mc.c, "d", "page") : null,
+          mc.tl ? el("p", { class: "m" }, `Onglet de lecture : ${mc.tl}`) : null,
+          mc.tc ? el("p", { class: "m" }, `Onglet du compte : ${mc.tc}`) : null].filter((node) => node !== null));
+      };
+      draw();
+    }
+    let aview = "friends";
+    /**
+     * L'onglet ÉTAT (2026-10-22 : « l'extension en mobile ») : chaque rouage (surveillance, Discord, Telegram, coffre, comptes) et chaque marchand surveillé, en mots ; un tap
+     * sur un marchand ouvre sa fiche (avec ses courbes chez l'admin).
+     */
+    function stateView() {
+      const tone = { o: "ok", w: "warn", b: "no", m: "mute" };
+      const list = (d.ms || []).slice().sort((a, b) => "bwmo".indexOf(a.t) - "bwmo".indexOf(b.t) || b.rd - a.rd);
+      const counts = { o: 0, w: 0, b: 0, m: 0 };
+      for (const m of list) counts[m.t] = (counts[m.t] || 0) + 1;
+      const full = (n) => (d.ad && d.ad.mc ? d.ad.mc.find((x) => x.n === n) : null);
+      return [
+        el("h2", {}, "🩺 Tout est OK ?"),
+        el("div", { class: "health-grid" }, ...(d.hc || []).map(([label, t, detail]) => el("div", { class: `card hcell ${tone[t] || "mute"}` },
+          el("div", { class: "hlabel" }, `${t === "o" ? "✅" : t === "w" ? "⚠️" : t === "b" ? "⛔" : "➖"} ${label}`), el("div", { class: "m" }, detail)))),
+        el("h2", {}, "🏬 Marchands", el("small", {}, `${list.length}`)),
+        list.length === 0 ? el("div", { class: "card empty" }, "Mets ton assistant à jour pour voir l'état des marchands ici.") : null,
+        // Les chiffres disent ce qu'ils comptent (audit T6 : « 1 » vert et « 1 » rouge sans légende).
+        list.length === 0 ? null : el("div", { class: "mbar" }, ...["o", "w", "b", "m"].filter((k) => counts[k] > 0).map((k) => {
+          const word = { o: "OK", w: "à surveiller", b: counts[k] > 1 ? "bloqués" : "bloqué", m: "inconnu" }[k];
+          return el("span", { class: `mseg ${tone[k]}`, style: `flex:${Math.max(counts[k], 2)}`, title: `${counts[k]} ${word}` }, `${counts[k]} ${word}`);
+        })),
+        list.length === 0 ? null : el("div", { class: "card list" }, ...list.map((mc) => el("div", { class: "friend tap", onclick: () => merchantSheet(full(mc.n) || mc) },
+          el("span", { class: "dot" }, FRIEND_DOT[mc.t] || "⚪"),
+          el("div", { class: "grow" }, el("b", {}, mc.n), el("span", {}, mc.s), el("span", {}, `${mc.rd} page${mc.rd > 1 ? "s" : ""} lue${mc.rd > 1 ? "s" : ""} aujourd'hui`))))),
+      ];
+    }
+
+    function admin() {
+      const a = d.ad;
+      const pick = el("div", { class: "filters" }, ...[["friends", `Amis (${a.fr.length})`], ["merchants", `Marchands (${(a.mc || []).length})`]].map(([id, label]) =>
+        el("button", { class: aview === id ? "on" : null, onclick: () => { aview = id; haptic("select"); render(); } }, label)));
+      if (aview === "merchants") {
+        const list = a.mc || [];
+        return [pick,
+          el("p", { class: "m", style: "margin:0 4px 8px" }, "Lu sur ton PC dans ce que ton assistant a gardé : rien n'est relu chez les marchands. Touche un marchand pour ses courbes."),
+          list.length === 0 ? el("div", { class: "card empty" }, "Activité des marchands non transmise (lien trop long ou assistant à mettre à jour).")
+            : el("div", { class: "card list" }, ...list.map((mc) => el("div", { class: "friend tap", onclick: () => merchantSheet(mc) },
+              el("span", { class: "dot" }, FRIEND_DOT[mc.t] || "⚪"),
+              el("div", { class: "grow" }, el("b", {}, mc.n), el("span", {}, mc.s), el("span", {}, `${mc.rd} lue${mc.rd > 1 ? "s" : ""} aujourd'hui`)))))];
+      }
+      const help = a.fr.reduce((n, f) => n + (f.hp || 0), 0);
+      return [pick,
+        el("div", { class: "stats" },
+          el("div", { class: "stat" }, el("b", {}, a.fr.length), el("span", {}, "amis")),
+          el("div", { class: "stat" }, el("b", {}, `${a.up}/${a.fr.length}`), el("span", {}, `sur la ${a.v}`)),
+          el("div", { class: "stat" }, el("b", {}, a.fr.filter((f) => f.t === "b").length), el("span", {}, "à aider"))),
+        help > 0 ? el("p", { class: "old" }, `🆘 ${help} demande${help > 1 ? "s" : ""} d'aide en attente (onglet Serveur du tableau de bord)`) : null,
+        el("p", { class: "m", style: "margin:10px 4px" }, a.at ? `État lu ${ago(a.at)}. « Tester » demande à chaque extension de répondre : réponses dans ta conversation en 1 à 2 min.` : "État jamais lu : touche « Actualiser »."),
+        el("div", { class: "row", style: "margin-bottom:10px" },
+          el("button", { class: "big ghost", onclick: () => send({ a: "admin", do: "refresh" }) }, "🔄 Actualiser"),
+          el("button", { class: "big main", onclick: () => send({ a: "admin", do: "test" }) }, "🧪 Tester tous")),
+        a.fr.length === 0 ? el("div", { class: "card empty" }, "Aucun ami ajouté (onglet Serveur du tableau de bord).") : el("div", { class: "card list" }, ...a.fr.map((f) => el("div", { class: "friend tap", onclick: () => friendSheet(f) },
+          el("span", { class: "dot" }, FRIEND_DOT[f.t] || "⚪"),
+          el("div", { class: "grow" }, el("b", {}, f.n), el("span", {}, f.s), el("span", {}, [f.seen ? `vu ${ago(f.seen)}` : "", f.ver ? `v${f.ver}` : ""].filter(Boolean).join(" · ")))))),
+      ];
+    }
+
+    function footer() {
+      const row = document.getElementById("footRow");
+      const n = changeCount();
+      // Les achats partent au premier geste : le panier ne garde plus que des réglages (suivis, ton max, sorties, réglages).
+      if (n > 0) {
+        row.replaceChildren(
+          el("button", { class: "big ghost", style: "flex:0 0 auto", onclick: () => { changes.follow.clear(); changes.max.clear(); changes.set = {}; changes.want.clear(); changes.decide.clear(); changes.buyNow.clear(); changes.quick.clear(); render(); } }, "Annuler"),
+          el("button", { class: "big main", onclick: () => send({ a: "batch", ops: pendingOps() }) }, `💾 Enregistrer ${n} changement${n > 1 ? "s" : ""}`));
+      } else {
+        row.replaceChildren();
+      }
+      document.getElementById("foot").hidden = n === 0;
+      // Un changement pas encore enregistré : Telegram demande confirmation avant de fermer l'appli (audit T7).
+      try { if (tg && tg.enableClosingConfirmation) { if (n > 0) tg.enableClosingConfirmation(); else tg.disableClosingConfirmation(); } } catch (e) { /* Telegram trop ancien : pas de confirmation */ }
+    }
+
+    function render() {
+      // Affichage simple : « Mes produits » réunit suivis et sorties, « Réglages » réunit réglages, état et admin.
+      const simple = simpleView();
+      const body = tab === "follows" ? (simple ? [...follows(), el("h2", {}, "📅 Sorties"), ...releases()] : follows())
+        : tab === "releases" ? releases() : tab === "state" ? stateView()
+        : tab === "settings" ? (simple ? [...settings(), ...stateView(), ...(d.ad ? [el("h2", {}, "👑 Admin"), ...admin()] : [])] : settings())
+        : tab === "admin" && d.ad ? admin() : home();
+      app.replaceChildren(...[...header(), ...body].filter((node) => node !== null));
+      footer();
+    }
+
+    decode(location.hash).then((data) => {
+      if (data === null) { app.replaceChildren(el("p", { class: "empty" }, "Ouvre « Mon tableau » depuis le bouton en bas de ta conversation avec ton bot Pokemon Drop Assistant.")); return; }
+      d = data;
+      render();
+    }).catch((e) => app.replaceChildren(el("p", { class: "empty" }, `Tableau illisible : ${e.message}`)));
+  </script>
+</body>
+</html>
