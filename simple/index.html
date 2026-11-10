@@ -163,8 +163,8 @@
       // Une photo que le marchand refuse de montrer hors de son site : la vignette de remplacement.
       return el("img", { class: "thumb", src, alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: (e) => e.target.replaceWith(ph()) });
     };
-    // R : en stock mais au-dessus de ton budget (revendeur) ; U : pas relu récemment (lectures en échec), son dernier état n'est pas sûr (2026-10-22).
-    const STATE = { I: "En stock", P: "Précommande", R: "Prix trop haut", S: "Bientôt", O: "Épuisé", U: "Pas relu" };
+    // R : en stock mais au-dessus de ton budget (revendeur) ; U : état pas sûr (pas relu depuis 20 min, lectures en échec, ou prix très sous le prix normal : peut-être une autre offre) (2026-11-10).
+    const STATE = { I: "En stock", P: "Précommande", R: "Prix trop haut", S: "Bientôt", O: "Épuisé", U: "À vérifier" };
     const ALERTS = [["En stock", "retour en stock"], ["Précommande", "précommande ouverte"], ["Baisse de prix", "un produit suivi baisse"], ["Bientôt disponible", "fiche annoncée"], ["Épuisé", "plus en stock"], ["Blocage à résoudre", "captcha ou accès limité"]];
     const parseEuros = (text) => { const t = text.trim().replace(/\s|€/g, "").replace(",", "."); if (t === "") return null; const n = Number(t); return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 100) : undefined; };
 
