@@ -149,6 +149,11 @@
       if (!canSend()) { alert("Ouvre « Mon tableau » depuis le bouton en bas de ta conversation avec ton bot : c'est lui qui transmet ton choix."); return; }
       haptic("medium");
       tg.sendData(JSON.stringify(action));
+      // Envoyé depuis le bouton du clavier, Telegram ferme l'appli aussitôt. Si elle est encore là 2,5 s après, le choix n'est PAS parti (appli ouverte par le bouton de menu ou un lien) : on le dit.
+      setTimeout(() => {
+        const lost = "Ton choix n'est pas parti : l'appli n'est pas ouverte par le bon bouton. Ferme-la, puis rouvre-la avec le bouton « 📱 Mon tableau » en bas de ta conversation avec le bot (pas le bouton de menu).";
+        if (typeof tg.showAlert === "function") tg.showAlert(lost); else alert(lost);
+      }, 2500);
     };
     const confirmThen = (text, then) => { if (tg && typeof tg.showConfirm === "function" && tg.platform !== "unknown") tg.showConfirm(text, (ok) => ok && then()); else if (confirm(text)) then(); };
     const open = (url) => { if (/^https:\/\//.test(url)) { if (tg) tg.openLink(url); else window.open(url, "_blank", "noopener"); } };
