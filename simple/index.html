@@ -14,6 +14,9 @@
   -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
+    /* Pas de barre de défilement (2026-11-10 : elle apparaît en défilant et décale l'affichage) : le défilement reste. */
+    html, body, * { scrollbar-width: none; }
+    *::-webkit-scrollbar { display: none; }
     :root {
       --bg: var(--tg-theme-bg-color, #ffffff); --text: var(--tg-theme-text-color, #16181d); --hint: var(--tg-theme-hint-color, #7a808c);
       --card: var(--tg-theme-secondary-bg-color, #f1f2f5); --link: var(--tg-theme-link-color, #2a7de1); --btn: var(--tg-theme-button-color, #2a7de1);
