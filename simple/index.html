@@ -313,6 +313,33 @@
       ];
     }
 
+    /** « 2 j 5 h », « 23 h 05 min », « 12 min » (miroir de timeLeftText de l'extension). */
+    const timeLeft = (ms) => {
+      const min = Math.floor(ms / 60000);
+      if (min < 1) return "moins d'une minute";
+      const days = Math.floor(min / 1440), hours = Math.floor((min % 1440) / 60), mins = min % 60;
+      if (days > 0) return hours > 0 ? `${days} j ${hours} h` : `${days} j`;
+      if (hours > 0) return mins > 0 ? `${hours} h ${String(mins).padStart(2, "0")} min` : `${hours} h`;
+      return `${mins} min`;
+    };
+    /** Les invitations Amazon actives (d.iv) : « ⚡ Acheter » (action quick, après confirmation) quand le prix est lu, sinon la fiche. Seules les fiches https://www.amazon.* ont un lien. */
+    const AMAZON_PAGE = /^https:\/\/www\.amazon\.[a-z.]+\//;
+    function invitations() {
+      const list = (d.iv || []).filter((v) => AMAZON_PAGE.test(v.u) && (!v.e || v.e > Date.now()));
+      if (list.length === 0) return null;
+      return [el("h2", {}, "📨 Invitation Amazon", el("small", {}, `${list.length}`)),
+        ...list.map((v) => el("div", { class: "card" }, el("div", { class: "item" },
+          thumb(v.img),
+          el("div", { class: "grow" },
+            el("div", { class: "t" }, v.t),
+            el("div", { class: "m" }, v.e ? `Il te reste ${timeLeft(v.e - Date.now())}` : "Invitation reçue : valable 72 h"),
+            // Avec le prix lu sur la fiche : « ⚡ Acheter » comme les autres produits (l'achat se fait sur le PC). Sans prix (ou achat depuis l'appli coupé) : seulement la fiche.
+            v.q && typeof v.c === "number"
+              ? el("button", { class: "small buy", style: "margin-top:6px", onclick: () => confirmThen(`Acheter « ${v.t} » à ${euros(v.c)} avec ton invitation Amazon ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => sendNow({ a: "quick", q: v.q })) }, "⚡ Acheter avec mon invitation")
+              : el("div", { class: "m" }, "Prix pas encore lu : achat automatique impossible pour l'instant."),
+            el("a", { class: "m", style: "display:block;margin-top:6px", href: "#", onclick: (e) => { e.preventDefault(); open(v.u); } }, "ouvrir la fiche Amazon ›")))))];
+    }
+
     function home() {
       const reqs = (d.p || []).filter((r) => r.e > Date.now());
       const offers = d.o || [];
@@ -325,6 +352,7 @@
             el("button", { class: "big buy", onclick: () => decide(r.i, "buy") }, "✅ Acheter"),
             el("button", { class: "big no", onclick: () => decide(r.i, "refuse") }, "❌ Refuser")),
           el("div", { class: "m", style: "margin-top:6px" }, "Un tap suffit : la réponse part tout de suite, et le résultat arrive dans la conversation."))),
+        ...(invitations() || []),
         // Les NOUVEAUX articles vus par le guet (3 h) : « ⚡ Acheter » au panier, comme sous l'alerte Telegram (2026-10-22).
         (d.nq || []).length > 0 ? el("h2", {}, "🆕 Nouveaux articles", el("small", {}, `${d.nq.length}`)) : null,
         ...(d.nq || []).map((n) => el("div", { class: "card" }, el("div", { class: "item" },
