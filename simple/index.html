@@ -340,6 +340,26 @@
             el("a", { class: "m", style: "display:block;margin-top:6px", href: "#", onclick: (e) => { e.preventDefault(); open(v.u); } }, "ouvrir la fiche Amazon ›")))))];
     }
 
+    /**
+     * PAIEMENT BLOQUÉ (d.pb) : le problème reste affiché jusqu'à sa résolution (payé, ou commande annulée par le marchand), avec un bouton par AUTRE carte du coffre (son NOM, jamais un chiffre) et « Ignorer ».
+     * Un appui sur « Payer avec… » demande confirmation, puis part comme un achat (jeton d'achat, mêmes garde-fous) ; la question « Garder cette carte comme principale ? » s'affiche tant qu'elle est ouverte.
+     */
+    function payBlocked() {
+      const list = d.pb || [];
+      if (list.length === 0) return null;
+      return [el("h2", {}, "⚠️ Paiement bloqué", el("small", {}, `${list.length}`)),
+        ...list.map((p) => el("div", { class: "card req" },
+          el("div", { class: "title" }, p.t),
+          el("div", { class: "meta" }, `${p.m}${p.a ? " · " + p.a : ""}`),
+          el("div", { class: "m" }, `Problème de paiement : ${p.r}.`),
+          el("div", { class: "m" }, "Causes possibles : validation à faire dans l'appli de ta banque · carte refusée · plafond atteint · carte expirée · solde insuffisant · carte signalée par le marchand."),
+          p.k
+            ? el("div", {}, el("div", { class: "title", style: "margin-top:8px" }, `Garder « ${p.k} » comme carte d'achat principale ?`),
+              el("div", { class: "row" }, el("button", { class: "big buy", onclick: () => sendNow({ a: "keep", r: p.i, on: true }) }, "Oui"), el("button", { class: "big no", onclick: () => sendNow({ a: "keep", r: p.i, on: false }) }, "Non")))
+            : el("div", {}, ...p.c.map((name, idx) => el("button", { class: "big buy", style: "margin-top:8px;width:100%", onclick: () => confirmThen(`Payer ${p.a || "ce montant"} pour « ${p.t} » avec la carte « ${name} » ? Ton appui vaut accord, une seule fois.`, () => sendNow({ a: "pay", r: p.i, i: idx })) }, `💳 Payer avec ${name}`)),
+              el("button", { class: "small", style: "margin-top:8px", onclick: () => sendNow({ a: "payx", r: p.i }) }, "Ignorer"))))];
+    }
+
     function home() {
       const reqs = (d.p || []).filter((r) => r.e > Date.now());
       const offers = d.o || [];
@@ -352,6 +372,7 @@
             el("button", { class: "big buy", onclick: () => decide(r.i, "buy") }, "✅ Acheter"),
             el("button", { class: "big no", onclick: () => decide(r.i, "refuse") }, "❌ Refuser")),
           el("div", { class: "m", style: "margin-top:6px" }, "Un tap suffit : la réponse part tout de suite, et le résultat arrive dans la conversation."))),
+        ...(payBlocked() || []),
         ...(invitations() || []),
         // Les NOUVEAUX articles vus par le guet (3 h) : « ⚡ Acheter » au panier, comme sous l'alerte Telegram (2026-10-22).
         (d.nq || []).length > 0 ? el("h2", {}, "🆕 Nouveaux articles", el("small", {}, `${d.nq.length}`)) : null,
