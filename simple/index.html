@@ -344,6 +344,21 @@
      * PAIEMENT BLOQUÉ (d.pb) : le problème reste affiché jusqu'à sa résolution (payé, ou commande annulée par le marchand), avec un bouton par AUTRE carte du coffre (son NOM, jamais un chiffre) et « Ignorer ».
      * Un appui sur « Payer avec… » demande confirmation, puis part comme un achat (jeton d'achat, mêmes garde-fous) ; la question « Garder cette carte comme principale ? » s'affiche tant qu'elle est ouverte.
      */
+    /**
+     * VÉRIFIER MA CARTE (d.cv : 1 = un achat s'est arrêté sur la carte du coffre non vérifiée par la banque, 2 = en attente de ta validation) : l'avertissement du paiement de 0 € est montré AVANT,
+     * puis un tap lance la vérification chez Amazon sur le PC ; la validation se fait dans l'appli de la banque.
+     */
+    function cardVerify() {
+      if (!d.cv) return null;
+      return [el("h2", {}, "🔐 Carte à vérifier"),
+        el("div", { class: "card req" },
+          el("div", { class: "title" }, "Ta carte du coffre n'est pas encore vérifiée chez Amazon"),
+          el("div", { class: "m" }, "Vérification nécessaire : ta banque (Revolut) va t'envoyer un paiement de 0 € à valider dans son appli. Rien n'est débité."),
+          d.cv === 2
+            ? el("div", { class: "m", style: "margin-top:6px" }, "⏳ En attente de ta validation dans l'appli de ta banque.")
+            : el("button", { class: "big buy", style: "margin-top:8px;width:100%", onclick: () => confirmThen("Vérifier ma carte chez Amazon ? Ta banque t'enverra un paiement de 0 € à valider dans son appli.", () => sendNow({ a: "vc" })) }, "🔐 Vérifier ma carte"))];
+    }
+
     function payBlocked() {
       const list = d.pb || [];
       if (list.length === 0) return null;
@@ -373,6 +388,7 @@
             el("button", { class: "big no", onclick: () => decide(r.i, "refuse") }, "❌ Refuser")),
           el("div", { class: "m", style: "margin-top:6px" }, "Un tap suffit : la réponse part tout de suite, et le résultat arrive dans la conversation."))),
         ...(payBlocked() || []),
+        ...(cardVerify() || []),
         ...(invitations() || []),
         // Les NOUVEAUX articles vus par le guet (3 h) : « ⚡ Acheter » au panier, comme sous l'alerte Telegram (2026-10-22).
         (d.nq || []).length > 0 ? el("h2", {}, "🆕 Nouveaux articles", el("small", {}, `${d.nq.length}`)) : null,
