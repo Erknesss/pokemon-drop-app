@@ -195,6 +195,12 @@
       return { a: "unlock", k: key.id, e: b64u(new Uint8Array(await crypto.subtle.exportKey("raw", mine.publicKey))), iv: b64u(iv), c: b64u(c) };
     }
 
+    /** Le CODE reçu (SMS Stripe Link, banque, marchand), chiffré comme la phrase du coffre pour le programme seul ; `i` : le jeton de la demande en cours (une réponse d'une autre demande est refusée). */
+    async function sealCode(cd, code) {
+      const sealed = await seal(cd.ck, code);
+      return { a: "code", i: cd.i, k: sealed.k, e: sealed.e, iv: sealed.iv, c: sealed.c };
+    }
+
     // --- État de la page --------------------------------------------------------------------------------------------------------
     let d = null;
     let tab = "home";
@@ -348,6 +354,29 @@
      * VÉRIFIER MA CARTE (d.cv : 1 = un achat s'est arrêté sur la carte du coffre non vérifiée par la banque, 2 = en attente de ta validation) : l'avertissement du paiement de 0 € est montré AVANT,
      * puis un tap lance la vérification chez Amazon sur le PC ; la validation se fait dans l'appli de la banque.
      */
+    /**
+     * CODE DEMANDÉ (d.cd : i jeton, n marchand, k genre, u fin, ck clé de chiffrement) : un marchand, Stripe Link ou la banque vient d'envoyer un code par SMS ; il se tape ici, chiffré sur le téléphone,
+     * et le programme le tape sur la page du marchand. Carte en tête de l'accueil tant que la demande dure (10 min).
+     */
+    function codeAsk() {
+      const cd = d.cd;
+      if (!cd || !cd.ck || cd.u <= Date.now()) return null;
+      const label = { sms: "SMS", email: "e-mail", link: "SMS Stripe Link", "3ds": "SMS de ta banque (3-D Secure)" }[cd.k] || "SMS";
+      const input = el("input", { type: "text", inputmode: "numeric", autocomplete: "one-time-code", placeholder: "Code reçu", maxlength: "12", enterkeyhint: "send", style: "width:100%;font:inherit;font-size:22px;letter-spacing:.2em;text-align:center;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);margin:8px 0" });
+      const go = async () => {
+        const digits = input.value.replace(/[\s-]/g, "");
+        if (!/^\d{4,8}$/.test(digits)) { alert("Un code est fait de 4 à 8 chiffres."); return; }
+        try { send(await sealCode(cd, digits)); } catch (e) { alert("Chiffrement impossible : " + e.message); }
+      };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+      return [el("h2", {}, "🔐 Code demandé"),
+        el("div", { class: "card req" },
+          el("div", { class: "title" }, cd.n + " t'a envoyé un code"),
+          el("div", { class: "m" }, label + " · valable encore " + Math.max(1, Math.round((cd.u - Date.now()) / 60000)) + " min. Il est chiffré ici, sur ton téléphone : Telegram ne voit qu'un texte illisible."),
+          input,
+          el("button", { class: "big buy", style: "width:100%", onclick: go }, "Envoyer le code"))];
+    }
+
     function cardVerify() {
       if (!d.cv) return null;
       return [el("h2", {}, "🔐 Carte à vérifier"),
@@ -387,6 +416,7 @@
             el("button", { class: "big buy", onclick: () => decide(r.i, "buy") }, "✅ Acheter"),
             el("button", { class: "big no", onclick: () => decide(r.i, "refuse") }, "❌ Refuser")),
           el("div", { class: "m", style: "margin-top:6px" }, "Un tap suffit : la réponse part tout de suite, et le résultat arrive dans la conversation."))),
+        ...(codeAsk() || []),
         ...(payBlocked() || []),
         ...(cardVerify() || []),
         ...(invitations() || []),
