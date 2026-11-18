@@ -59,7 +59,7 @@
     .friend { display: flex; gap: 10px; align-items: flex-start; padding: 11px 2px; border-bottom: 1px solid var(--line); } .friend:last-child { border-bottom: 0; }
     .friend .dot { font-size: 15px; line-height: 1.4; } .friend .grow span { display: block; font-size: 12.5px; color: var(--hint); }
     .mfig { margin: 10px 0 4px; } .mchart { display: block; width: 100%; height: auto; }
-    .mchart .mbar { fill: var(--btn); } .mchart .mhit { fill: transparent; } .mchart .mhit:active, .mchart .mhit:hover { fill: var(--text); opacity: .08; }
+    .mchart .mcol { fill: var(--btn); } .mchart .mhit { fill: transparent; } .mchart .mhit:active, .mchart .mhit:hover { fill: var(--text); opacity: .08; }
     .mchart .mbase { stroke: var(--line); stroke-width: 1; } .mchart .maxis { fill: var(--hint); font-size: 9px; }
     .tabs button.on { background: var(--btn); color: var(--btn-text); }
     button.picked { outline: 3px solid var(--text); outline-offset: -3px; font-weight: 700; }
@@ -93,6 +93,25 @@
     .stat b { display: block; font-size: 23px; letter-spacing: -.02em; } .stat span { font-size: 12px; color: var(--hint); }
     .rel { display: flex; justify-content: space-between; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
     .rel:last-child { border-bottom: 0; } .rel b { font-weight: 600; } .rel span { color: var(--hint); font-size: 13px; white-space: nowrap; }
+    /* Statistiques (2026-11-18) */
+    .stats.wrap { display: grid; gap: 8px; } .stats.wrap .stat { min-width: 0; padding: 10px 4px; } .filters.wrap { flex-wrap: wrap; overflow: visible; }
+    .stat b.tone-ok { color: var(--ok); } .stat b.tone-warn, .tone-warn { color: var(--warn); } .stat b.tone-no, .tone-no { color: var(--no); }
+    .sentence { font-weight: 650; margin: 4px 4px 8px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--hint); margin-top: 6px; } .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+    .mchart .hb-ok, .sw.hb-ok { fill: var(--btn); background: var(--btn); } .mchart .hb-watch, .sw.hb-watch { fill: var(--warn); background: var(--warn); }
+    .mchart .hb-blocked, .sw.hb-blocked { fill: var(--no); background: var(--no); opacity: .85; } .mchart .hb-idle, .sw.hb-idle { fill: var(--mute); background: var(--mute); opacity: .55; }
+    .mchart .hb-down { fill: var(--line); }
+    .tbl { padding: 4px 10px; }
+    .tbl .tr { display: grid; grid-template-columns: minmax(0, 1fr) repeat(var(--cols, 3), max-content); gap: 4px 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .tbl .tr:last-child { border-bottom: 0; } .tbl .tr > span:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+    .tbl .th { color: var(--hint); font-size: 11.5px; font-weight: 650; padding: 6px 0; }
+    .tdn { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+    .dot2 { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: var(--mute); }
+    .dot2.o { background: var(--ok); } .dot2.w { background: var(--warn); } .dot2.b { background: var(--no); }
+    .strip { display: flex; gap: 1px; margin-top: 4px; } .strip i { flex: 1 1 0; height: 9px; min-width: 2px; border-radius: 2px; background: var(--line); }
+    .strip i.c1 { background: var(--btn); opacity: .3; } .strip i.c2 { background: var(--btn); opacity: .5; } .strip i.c3 { background: var(--btn); opacity: .75; } .strip i.c4 { background: var(--btn); }
+    .strip i.cw { background: var(--warn); } .strip i.cb { background: var(--no); }
     .filters { display: flex; gap: 6px; margin: 0 0 10px; overflow-x: auto; }
     .filters button { font: inherit; font-size: 13px; font-weight: 650; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; white-space: nowrap; }
     .filters button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
@@ -578,7 +597,7 @@
         ["vault", "🔐", "Coffre et carte", `${d.v === true ? "Coffre ouvert" : d.v === false ? "Coffre fermé" : "Coffre inconnu"}${d.cv ? " · carte à vérifier" : ""}`],
         ["look", "🖥", "Apparence", simpleView() ? "Affichage simple" : "Affichage complet"],
         ...(simple ? [["status", "🩺", "Diagnostic", hcBad > 0 ? `⛔ ${hcBad} à régler` : hcWarn > 0 ? `⚠️ ${hcWarn} à voir` : (d.hc || []).length === 0 ? "Pas encore lu" : "✅ Tout est OK"]] : []),
-        ["stats", "📊", "Statistiques", d.cx ? `${d.cx.c.toFixed(2).replace(".", ",")} $ de captchas` : "Activité du jour"],
+        ["stats", "📊", "Statistiques", d.st ? `${Math.round((d.st.m || []).reduce((n, r) => n + r[2], 0)).toLocaleString("fr-FR")} pages lues sur 24 h${d.st.c ? ` · ${(d.st.c.t[0] / 1000).toFixed(2).replace(".", ",")} $ de captchas` : ""}` : d.cx ? `${d.cx.c.toFixed(2).replace(".", ",")} $ de captchas` : "Activité du jour"],
         ...(simple && d.ad ? [["friends", "👥", "Amis", `${d.ad.fr.length} ami${d.ad.fr.length > 1 ? "s" : ""}`]] : []),
       ];
     }
@@ -675,23 +694,178 @@
       ].filter((node) => node !== null);
     }
 
-    function statsBlock() {
-      const list = d.ms || [];
-      const reads = list.reduce((n, m) => n + (m.rd || 0), 0);
-      const c = d.cx;
+    /**
+     * STATISTIQUES (2026-11-18 : « comme sur le démon, toutes les stats, avec les tableaux ») : les mêmes vues que Réglages › Statistiques du tableau de bord, en cinq pages (Santé, Marchands, Pages lues,
+     * Captchas, Partage). Tout vient de `d.st` (extension/app-stats.ts) : rien n'est relu chez les marchands ; la page ne montre que ce que le lien contient (les périodes longues partent d'abord si le lien est trop long).
+     */
+    let ssub = "health";
+    let srange = "d";
+    const SPERIODS = { d: { name: "24 h", unit: 1, label: (k) => (k === 0 ? "dernière heure" : `il y a ${k} h`), axis: ["il y a 24 h", "il y a 12 h", "maintenant"] },
+      w: { name: "7 jours", unit: 4, label: (k) => (k === 0 ? "dernières 4 h" : `il y a ${k * 4} h`), axis: ["il y a 7 j", "il y a 3 j ½", "maintenant"] },
+      m: { name: "30 jours", unit: 24, label: (k) => (k === 0 ? "aujourd'hui" : `il y a ${k} j`), axis: ["il y a 30 j", "il y a 15 j", "aujourd'hui"] } };
+    const dollars = (milli) => { const v = Math.abs(milli) / 1000; const dec = v === 0 || v >= 0.1 ? 2 : Math.min(6, Math.ceil(-Math.log10(v)) + 2); return `${(milli / 1000).toFixed(dec).replace(/(\.\d{2}\d*?)0+$/, "$1").replace(".", ",")} $`; };
+    const nf = (n) => Math.round(n).toLocaleString("fr-FR");
+    const pctOf = (num, den) => (den > 0 ? `${Math.round((100 * num) / den)} %` : "—");
+    const rangePick = (ranges, on, set) => el("div", { class: "filters", style: "margin:0 0 8px" }, ...ranges.map((r) => el("button", { class: on === r ? "on" : null, onclick: () => { set(r); haptic("select"); render(); } }, SPERIODS[r].name)));
+    const legend = (items) => el("div", { class: "legend" }, ...items.map(([cls, text]) => el("span", {}, el("i", { class: `sw ${cls}` }), text)));
+    const tiles = (list) => el("div", { class: "stats wrap", style: `grid-template-columns:repeat(${list.length % 3 === 0 ? 3 : 2},minmax(0,1fr))` }, ...list.map(([value, label, tone]) => el("div", { class: "stat" }, el("b", { class: tone ? `tone-${tone}` : null }, value), el("span", {}, label))));
+    /** Un tableau en cartes de lignes : première colonne à gauche, les autres alignées à droite ; `cells` peut contenir des nœuds. */
+    const table = (head, rows, empty) => rows.length === 0 ? el("div", { class: "card empty" }, empty)
+      : el("div", { class: "card tbl", style: `--cols:${head.length - 1}` }, el("div", { class: "tr th" }, ...head.map((h) => el("span", {}, h))), ...rows.map((cells) => el("div", { class: "tr" }, ...cells.map((c) => (c instanceof Node ? c : el("span", {}, String(c)))))));
+    /** Une barre par tranche (la plus récente à droite) ; au toucher : le détail. */
+    function bars(series, period, unit, text) {
+      const W = 320, H = 78, TOP = 12, BASE = H - 14, n = series.length;
+      const max = Math.max(0, ...series);
+      const box = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "mchart", role: "img" });
+      const step = W / Math.max(1, n);
+      box.append(svgEl("line", { x1: 0, x2: W, y1: BASE, y2: BASE, class: "mbase" }));
+      series.forEach((v, i) => {
+        const hgt = max === 0 ? 0 : Math.max(v > 0 ? 2 : 0, ((BASE - TOP) * v) / max);
+        if (hgt > 0) box.append(svgEl("rect", { x: i * step + 0.5, y: BASE - hgt, width: Math.max(1, step - 1), height: hgt, rx: 1, class: "mcol" }));
+        const hit = svgEl("rect", { x: i * step, y: 0, width: step, height: BASE, class: "mhit" });
+        hit.append(svgEl("title", {}, `${SPERIODS[period].label(n - 1 - i)} : ${text ? text(v) : `${nf(v)} ${unit}${v > 1 ? "s" : ""}`}`));
+        box.append(hit);
+      });
+      SPERIODS[period].axis.forEach((label, i) => box.append(svgEl("text", { x: [0, W / 2, W][i], y: H - 2, "text-anchor": ["start", "middle", "end"][i], class: "maxis" }, label)));
+      if (max > 0) box.append(svgEl("text", { x: 0, y: 9, class: "maxis" }, `max ${text ? text(max) : nf(max)}`));
+      return box;
+    }
+    /** Barres empilées de la santé : en ordre / à surveiller / bloqués / pas lus ; une tranche sans données reste vide, une application arrêtée est grisée. */
+    function healthBars(list, total, period) {
+      const W = 320, H = 92, TOP = 4, BASE = H - 14, n = list.length;
+      const box = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "mchart", role: "img" });
+      const step = W / Math.max(1, n);
+      box.append(svgEl("line", { x1: 0, x2: W, y1: BASE, y2: BASE, class: "mbase" }));
+      const scale = (BASE - TOP) / Math.max(1, total);
+      list.forEach((b, i) => {
+        const hit = svgEl("rect", { x: i * step, y: 0, width: step, height: BASE, class: "mhit" });
+        const when = SPERIODS[period].label(n - 1 - i);
+        if (b === 0 || b === -1) {
+          if (b === -1) box.append(svgEl("rect", { x: i * step + 0.5, y: TOP, width: Math.max(1, step - 1), height: BASE - TOP, class: "hb-down" }));
+          hit.append(svgEl("title", {}, `${when} : ${b === -1 ? "application arrêtée ou PC éteint (période non comptée)" : "pas de données gardées"}`));
+        } else {
+          let y = BASE;
+          [["hb-ok", b[0]], ["hb-watch", b[1]], ["hb-blocked", b[2]], ["hb-idle", b[3]]].forEach(([cls, v]) => {
+            if (v <= 0) return;
+            const hgt = v * scale; y -= hgt;
+            box.append(svgEl("rect", { x: i * step + 0.5, y, width: Math.max(1, step - 1), height: hgt, class: cls }));
+          });
+          hit.append(svgEl("title", {}, `${when} : ${b[0]} en ordre · ${b[1]} à surveiller · ${b[2]} bloqués · ${b[3]} pas lus`));
+        }
+        box.append(hit);
+      });
+      SPERIODS[period].axis.forEach((label, i) => box.append(svgEl("text", { x: [0, W / 2, W][i], y: H - 2, "text-anchor": ["start", "middle", "end"][i], class: "maxis" }, label)));
+      return box;
+    }
+    /** Une rangée de 24 petites cases (une par heure) : . rien · 1-4 lues (plus vif = plus de pages) · w échecs · b bloqué. */
+    const strip = (cells) => el("span", { class: "strip", "aria-hidden": "true" }, ...[...cells].map((c) => el("i", { class: c === "." ? "c0" : c === "w" ? "cw" : c === "b" ? "cb" : `c${c}` })));
+    const mdot = (t) => el("i", { class: `dot2 ${t}` });
+
+    function healthPage(st) {
+      const h = st.h;
+      const list = h[srange];
+      const periods = ["d", "w", "m"].filter((r) => h[r] && h[r].length > 0);
+      if (!periods.includes(srange)) srange = "d";
+      const known = [...(h[srange] || [])].reverse().find((b) => Array.isArray(b));
+      const out = [rangePick(periods, srange, (r) => { srange = r; })];
+      if (!known) return [...out, el("div", { class: "card empty" }, "Aucune lecture gardée sur cette période.")];
+      out.push(el("p", { class: "sentence" }, `${known[0]} marchand${known[0] > 1 ? "s" : ""} sur ${h.n} ${known[0] > 1 ? "sont" : "est"} en ordre${known[1] ? ` · ${known[1]} à surveiller` : ""}${known[2] ? ` · ${known[2]} bloqué${known[2] > 1 ? "s" : ""} ou limité${known[2] > 1 ? "s" : ""}` : ""}${known[3] ? ` · ${known[3]} pas lu${known[3] > 1 ? "s" : ""} dans la dernière tranche` : ""}`));
+      out.push(tiles([[String(known[0]), "en ordre", "ok"], [String(known[1]), "à surveiller", known[1] ? "warn" : null], [String(known[2]), "bloqués ou limités", known[2] ? "no" : null], [String(h.n + (h.z ? h.z.length : 0)), "marchands suivis"]]));
+      out.push(el("div", { class: "card" }, el("div", { class: "m" }, `Santé des marchands (${SPERIODS[srange].name}) — nombre de marchands par tranche`), healthBars(h[srange], h.n, srange),
+        legend([["hb-ok", "en ordre"], ["hb-watch", "à surveiller"], ["hb-blocked", "bloqués ou limités"], ["hb-idle", "pas lus"]])));
+      if (h.z && h.z.length > 0) out.push(el("p", { class: "m", style: "margin:6px 4px" }, `Jamais lus sur cette période (hors du graphique) : ${h.z.join(", ")}.`));
+      out.push(el("p", { class: "m", style: "margin:6px 4px" }, "Touche une barre pour le détail de la tranche. Une tranche vide = pas de données (pas une panne) ; grisée = programme arrêté."));
+      return out;
+    }
+
+    function merchantsPage(st) {
+      const rows = st.m || [];
+      const sum = (i) => rows.reduce((n, r) => n + r[i], 0);
       return [
-        el("div", { class: "stats" },
-          el("div", { class: "stat" }, el("b", {}, String(reads)), el("span", {}, "pages lues aujourd'hui")),
-          el("div", { class: "stat" }, el("b", {}, String(list.filter((m) => m.rd > 0).length)), el("span", {}, "marchands lus")),
-          el("div", { class: "stat" }, el("b", {}, c ? `${c.c.toFixed(2).replace(".", ",")} $` : "—"), el("span", {}, "captchas payés"))),
-        el("h2", {}, "🧩 Captchas résolus"),
-        c ? el("div", { class: "card list" },
-          setRow("Dépensé depuis le début", c.t ? `depuis le ${new Date(c.t).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}` : "", el("b", {}, `${c.c.toFixed(2).replace(".", ",")} $`)),
-          setRow("Résolus", "par 2captcha", el("b", {}, String(c.s))),
-          setRow("Échoués", "non facturés quand la tâche n'est pas résolue", el("b", {}, String(c.f))),
-          setRow("Taux de réussite", "résolus sur tentés", el("b", {}, c.s + c.f > 0 ? `${Math.round((100 * c.s) / (c.s + c.f))} %` : "—")))
-          : el("div", { class: "card empty" }, "Aucun captcha résolu pour l'instant."),
-        el("p", { class: "m", style: "margin:8px 4px" }, "Le solde restant et les courbes détaillées sont dans le tableau de bord sur ton PC (Réglages › Statistiques)."),
+        tiles([[nf(sum(2)), "pages lues (24 h)"], [nf(sum(3)), "en échec", sum(3) ? "warn" : null], [nf(sum(4)), "bloquées", sum(4) ? "no" : null], [nf(sum(6)), "pages sur 7 jours"]]),
+        el("p", { class: "m", style: "margin:2px 4px 8px" }, "Une case par heure sur 24 h, la plus récente à droite : bleu = pages lues (plus vif = plus de pages), ambre = échecs, rouge = bloqué, gris = rien lu."),
+        table(["Marchand", "Lues", "Échecs", "Bloq."], rows.map((r) => [el("span", { class: "tdn" }, mdot(r[1]), r[0], strip(r[5])), nf(r[2]), r[3] ? el("span", { class: "tone-warn" }, nf(r[3])) : "0", r[4] ? el("span", { class: "tone-no" }, nf(r[4])) : "0"]), "Pas encore de lectures gardées."),
+      ];
+    }
+
+    function pagesPage(st) {
+      const p = st.p;
+      const periods = ["d", "w", "m"].filter((r) => p[r] && p[r].length > 0);
+      if (!periods.includes(srange)) srange = "d";
+      const series = p[srange] || [];
+      const total = series.reduce((a, b) => a + b, 0);
+      const peak = Math.max(0, ...series);
+      return [
+        rangePick(periods, srange, (r) => { srange = r; }),
+        tiles([[nf(total), `pages lues (${SPERIODS[srange].name})`], [nf(peak), `pic par ${srange === "d" ? "heure" : srange === "w" ? "4 h" : "jour"}`], [nf(total / Math.max(1, series.filter((v) => v > 0).length)), "moyenne par tranche active"]]),
+        el("div", { class: "card" }, el("div", { class: "m" }, "Pages lues chez tous les marchands"), bars(series, srange, "page")),
+        el("p", { class: "m", style: "margin:6px 4px" }, "Touche une barre pour le nombre de pages de la tranche."),
+      ];
+    }
+
+    function captchasPage(st) {
+      const c = st.c;
+      if (!c) return [el("div", { class: "card empty" }, "Aucun captcha résolu pour l'instant.")];
+      const [total, d24, d7, n, solved, failed, since, tasksToday, spentToday, avg] = c.t;
+      const period = srange === "w" ? "w" : "d";
+      const list = c[period] || [];
+      const out = [
+        el("div", { class: "filters", style: "margin:0 0 8px" }, ...[["d", "24 h"], ["w", "7 jours"]].map(([r, name]) => el("button", { class: period === r ? "on" : null, onclick: () => { srange = r; haptic("select"); render(); } }, name))),
+        tiles([[dollars(total), "dépensé depuis le début"], [dollars(d24), "dépensé 24 h"], [dollars(d7), "dépensé 7 jours"], [nf(n), "résolutions notées"],
+          [pctOf(solved, solved + failed), "réussies", solved + failed > 0 && solved / (solved + failed) < 0.5 ? "warn" : null], [avg < 0 ? "—" : `${(avg / 10).toFixed(1).replace(".", ",")} s`, "temps moyen"],
+          [`${nf(tasksToday)} / 1 000`, "tâches aujourd'hui"], [`${dollars(spentToday)} / 5 $`, "dépense aujourd'hui"]]),
+        since ? el("p", { class: "m", style: "margin:2px 4px 8px" }, `Cumul depuis le ${new Date(since).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} : ${nf(solved)} résolus, ${nf(failed)} échoués (une tâche non résolue n'est pas facturée).`) : null,
+      ];
+      const per = period === "d" ? "heure" : "jour";
+      out.push(el("div", { class: "card" }, el("div", { class: "m" }, `Captchas résolus par ${per}`), bars(list.map((b) => b[0]), period === "d" ? "d" : "m", "résolution",
+        null), legend([["hb-ok", "résolus (barres)"]])));
+      out.push(el("div", { class: "card" }, el("div", { class: "m" }, `Prix total par ${per}`), bars(list.map((b) => b[2]), period === "d" ? "d" : "m", "$", (v) => dollars(v))));
+      out.push(el("p", { class: "m", style: "margin:2px 4px 8px" }, "Les barres de 7 jours comptent un jour chacune ; touche une barre pour le détail."));
+      if (c.ty && c.ty.length > 0) {
+        out.push(el("h2", {}, "Types de captcha"), table(["Type", "Tâches", "Résolus", "Dépensé"], c.ty.map((t) => [t[0], nf(t[1]), pctOf(t[2], t[1]), dollars(t[3])]), ""));
+      }
+      out.push(el("h2", {}, "Par marchand (24 h)"), table(["Marchand", "Résolus", "Échecs", "Dépensé", "Bloq.", "Attente"], (c.r || []).map((r) => [el("span", { class: "tdn" }, r[8] ? el("i", { class: "dot2 b", title: "en pause (plafond atteint)" }) : mdot("o"), r[0]), nf(r[2]), r[3] ? el("span", { class: "tone-warn" }, nf(r[3])) : "0", dollars(r[4]), r[5] ? el("span", { class: "tone-warn" }, nf(r[5])) : "0", r[6] > 0 ? `${nf(r[6])} min` : "—"]), "Aucun captcha ni blocage sur cette période."));
+      return out.filter((x) => x !== null);
+    }
+
+    function sharePage(st) {
+      const s = st.s;
+      if (!s) return [el("div", { class: "card empty" }, "Aucune lecture notée pour l'instant : le journal du partage se remplit au fil des heures.")];
+      const key = srange === "w" ? "w" : "d";
+      const [peers, hoursPeers, hours, own, skipped, saving, scansDeleg, scansOwn, sent, received, failedPoll] = s[key];
+      const out = [
+        el("div", { class: "filters", style: "margin:0 0 8px" }, ...[["d", "24 h"], ["w", "7 jours"]].map(([r, name]) => el("button", { class: key === r ? "on" : null, onclick: () => { srange = r; haptic("select"); render(); } }, name))),
+        tiles([[String(peers), "amis en ligne (au plus)"], [`${hoursPeers} / ${hours}`, "heures avec des amis"], [nf(own), "pages lues ici"], [nf(skipped), "pages évitées"],
+          [saving < 0 ? "—" : `${Math.round(saving / 10)} %`, "économie"], [nf(scansDeleg), "recherches reprises"], [`${nf(sent)} / ${nf(received)}`, "restocks envoyés / reçus"], [nf(failedPoll), "relectures ratées", failedPoll ? "warn" : null]]),
+        el("p", { class: "m", style: "margin:2px 4px 8px" }, `Recherches faites ici et partagées : ${nf(scansOwn)}. « Économie » = pages évitées / (lues + évitées).`),
+        el("div", { class: "card" }, el("div", { class: "m" }, "Pages lues ici, heure par heure (24 h)"), bars(s.o, "d", "page")),
+        el("div", { class: "card" }, el("div", { class: "m" }, "Pages évitées grâce aux amis (24 h)"), bars(s.k, "d", "page")),
+      ];
+      if (peers > 0 || Math.max(0, ...s.a) > 0) out.push(el("div", { class: "card" }, el("div", { class: "m" }, "Amis en ligne (24 h)"), bars(s.a, "d", "ami")));
+      out.push(el("h2", {}, "Par marchand (24 h)"), table(["Marchand", "Lues ici", "Évitées", "Économie"], (s.m || []).map((r) => [r[0], nf(r[1]), nf(r[2]), pctOf(r[2], r[1] + r[2])]), "Rien noté par marchand."));
+      return out;
+    }
+
+    function statsBlock() {
+      const st = d.st;
+      if (!st) {
+        // Programme pas encore à jour (ou lien trop long) : ce que le tableau contenait avant (pages lues du jour, captchas).
+        const list = d.ms || [];
+        const c = d.cx;
+        return [
+          el("div", { class: "stats" },
+            el("div", { class: "stat" }, el("b", {}, String(list.reduce((n, m) => n + (m.rd || 0), 0))), el("span", {}, "pages lues aujourd'hui")),
+            el("div", { class: "stat" }, el("b", {}, c ? `${c.c.toFixed(2).replace(".", ",")} $` : "—"), el("span", {}, "captchas payés"))),
+          el("p", { class: "m", style: "margin:8px 4px" }, "Les statistiques complètes (santé, tableaux par marchand, captchas, partage) arrivent avec la mise à jour de ton programme ; si elles manquent encore, le lien était trop long : touche 🔄 Actualiser."),
+        ];
+      }
+      const pages = [["health", "Santé"], ["merchants", "Marchands"], ["pages", "Pages lues"], ["captchas", "Captchas"], ["share", "Partage"]];
+      if (!pages.some(([id]) => id === ssub)) ssub = "health";
+      const body = ssub === "health" ? healthPage(st) : ssub === "merchants" ? merchantsPage(st) : ssub === "pages" ? pagesPage(st) : ssub === "captchas" ? captchasPage(st) : sharePage(st);
+      return [
+        el("div", { class: "filters wrap" }, ...pages.map(([id, label]) => el("button", { class: ssub === id ? "on" : null, onclick: () => { ssub = id; srange = "d"; haptic("select"); render(); window.scrollTo(0, 0); } }, label))),
+        ...body,
+        el("p", { class: "m", style: "margin:10px 4px" }, `Chiffres lus sur ton PC ${ago(st.at)} (rien n'est relu chez les marchands). Le solde 2captcha et les courbes détaillées restent dans le tableau de bord.`),
       ];
     }
 
@@ -723,7 +897,7 @@
       box.append(svgEl("line", { x1: 0, x2: W, y1: BASE, y2: BASE, class: "mbase" }));
       series.forEach((n, i) => {
         const hgt = max === 0 ? 0 : Math.max(n > 0 ? 2 : 0, ((BASE - TOP) * n) / max);
-        if (hgt > 0) box.append(svgEl("rect", { x: i * step + 0.5, y: BASE - hgt, width: Math.max(1, step - 1), height: hgt, rx: 1, class: "mbar" }));
+        if (hgt > 0) box.append(svgEl("rect", { x: i * step + 0.5, y: BASE - hgt, width: Math.max(1, step - 1), height: hgt, rx: 1, class: "mcol" }));
         const from = start + i * R.ms;
         const hit = svgEl("rect", { x: i * step, y: 0, width: step, height: BASE, class: "mhit" });
         hit.append(svgEl("title", {}, `${range === "m" ? dd(from + R.ms / 2) : range === "w" ? `${dd(from)} ${hm(from)}–${hm(from + R.ms)}` : `${hm(from)}–${hm(from + R.ms)}`} : ${n} ${unit}${n > 1 ? "s" : ""}`));
