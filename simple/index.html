@@ -315,7 +315,7 @@
           el("button", { class: "chip", title: "Demander un tableau neuf", onclick: () => send({ a: "refresh" }) }, "🔄 Actualiser")),
         statusChips(),
         el("nav", { class: `tabs ${tabs.length === 3 ? "three" : tabs.length === 6 ? "six" : "five"}` }, ...tabs.map(([id, label, n]) =>
-          el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
+          el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; if (id === "settings") rsec = null; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
       ];
     }
 
@@ -545,43 +545,153 @@
       ];
     }
 
+    /**
+     * RÉGLAGES EN RUBRIQUES (2026-11-18, comme le menu ⚙ Réglages du programme PC) : une liste de rubriques avec, pour chacune, l'état en une ligne ; un tap ouvre la rubrique, « ‹ Réglages » revient.
+     * Les rubriques « Marchands », « Diagnostic » et « Amis » ne sont là que dans l'affichage simple (l'affichage complet a ses onglets État et Admin).
+     */
+    let rsec = null;
+    const openSection = (id) => { rsec = id; haptic("select"); render(); window.scrollTo(0, 0); };
+    const setRow = (title, hint, control) => el("div", { class: "set" }, el("div", { class: "grow" }, el("b", {}, title), el("span", {}, hint)), control);
+    const swEl = (checked, onchange) => el("label", { class: "switch" }, el("input", { type: "checkbox", checked, onchange: (e) => onchange(e.target.checked) }), el("span", {}));
+    const euro0 = (cents) => `${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2).replace(".", ",")} €`;
+    const LANGS = { FR: "français", EN: "anglais", DE: "allemand", ES: "espagnol", IT: "italien", JA: "japonais", KO: "coréen", ZH: "chinois", PT: "portugais" };
+    /** Un interrupteur du bloc `g` dont l'absence veut dire « oui » (af, ai, se, lo, ap). */
+    const flag = (key) => (key in changes.set ? changes.set[key] : d.g ? d.g[key] !== false : true);
+    const toggleFlag = (key) => (v) => { if (v === (d.g[key] !== false)) delete changes.set[key]; else changes.set[key] = v; haptic("light"); render(); };
+
+    function counts() {
+      const out = { o: 0, w: 0, b: 0, m: 0 };
+      for (const m of d.ms || []) out[m.t] = (out[m.t] || 0) + 1;
+      return out;
+    }
+    function sectionList() {
+      const simple = simpleView();
+      const c = counts();
+      const alertsOn = ALERTS.filter((_, i) => (settingOf("al") & (1 << i)) !== 0).length;
+      const hcBad = (d.hc || []).filter((x) => x[1] === "b").length;
+      const hcWarn = (d.hc || []).filter((x) => x[1] === "w").length;
+      return [
+        ["watch", "👁", "Surveillance", d.on ? "Active" : "⏸ En pause"],
+        ["notify", "🔔", "Me prévenir", `${alertsOn} alerte${alertsOn > 1 ? "s" : ""} sur ${ALERTS.length}${settingOf("so") ? " · son" : ""}`],
+        ["buy", "🛒", "Règles d'achat", `${settingOf("ab") ? "Achat automatique" : "À finir à la main"}${settingOf("mg") >= 0 ? ` · marge ${settingOf("mg")} %` : ""}`],
+        ...(simple ? [["merchants", "🏬", "Marchands", (d.ms || []).length === 0 ? "Pas encore lu" : `${c.o} OK${c.w ? ` · ${c.w} à surveiller` : ""}${c.b ? ` · ${c.b} bloqué${c.b > 1 ? "s" : ""}` : ""}`]] : []),
+        ["vault", "🔐", "Coffre et carte", `${d.v === true ? "Coffre ouvert" : d.v === false ? "Coffre fermé" : "Coffre inconnu"}${d.cv ? " · carte à vérifier" : ""}`],
+        ["look", "🖥", "Apparence", simpleView() ? "Affichage simple" : "Affichage complet"],
+        ...(simple ? [["status", "🩺", "Diagnostic", hcBad > 0 ? `⛔ ${hcBad} à régler` : hcWarn > 0 ? `⚠️ ${hcWarn} à voir` : (d.hc || []).length === 0 ? "Pas encore lu" : "✅ Tout est OK"]] : []),
+        ["stats", "📊", "Statistiques", d.cx ? `${d.cx.c.toFixed(2).replace(".", ",")} $ de captchas` : "Activité du jour"],
+        ...(simple && d.ad ? [["friends", "👥", "Amis", `${d.ad.fr.length} ami${d.ad.fr.length > 1 ? "s" : ""}`]] : []),
+      ];
+    }
+
     function settings() {
       if (!d.g) return [el("div", { class: "card empty" }, "Mets ton assistant à jour pour régler depuis ici.")];
-      const change = (key, value) => { if (value === d.g[key]) delete changes.set[key]; else changes.set[key] = value; haptic("light"); render(); };
-      const sw = (checked, onchange) => el("label", { class: "switch" }, el("input", { type: "checkbox", checked, onchange: (e) => onchange(e.target.checked) }), el("span", {}));
-      const set = (title, hint, control) => el("div", { class: "set" }, el("div", { class: "grow" }, el("b", {}, title), el("span", {}, hint)), control);
-      const mg = settingOf("mg");
-      const margin = el("input", { class: "euro", inputmode: "numeric", value: mg < 0 ? "" : String(mg), placeholder: "%", "aria-label": "Marge en pourcent", disabled: mg < 0 ? "" : null });
-      margin.addEventListener("change", () => {
-        const n = Number(margin.value.replace("%", "").trim());
-        if (!Number.isInteger(n) || n < 0 || n > 100) { alert("Marge : un nombre entier de 0 à 100."); margin.value = String(mg); return; }
-        change("mg", n);
-      });
-      const al = settingOf("al");
-      // « Acheter depuis l'appli » (2026-11-09) : absent = oui.
-      const appBuy = "ap" in changes.set ? changes.set.ap : d.g.ap !== false;
-      const view = simpleView() ? "simple" : "complete";
+      const sections = sectionList();
+      if (rsec !== null && !sections.some(([id]) => id === rsec)) rsec = null;
+      if (rsec === null) {
+        return [
+          el("div", { class: "card list" }, ...sections.map(([id, icon, label, summary]) => el("div", { class: "friend tap", role: "button", tabindex: "0", onclick: () => openSection(id), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openSection(id); } } },
+            el("span", { class: "dot" }, icon), el("div", { class: "grow" }, el("b", {}, label), el("span", {}, summary)), el("span", { class: "m", "aria-hidden": "true" }, "›")))),
+          el("p", { class: "m", style: "margin:12px 4px" }, "Les identifiants, le coffre, l'adresse et la liste des marchands se règlent dans le tableau de bord sur ton PC (jamais depuis le téléphone)."),
+        ];
+      }
+      const [, icon, label] = sections.find(([id]) => id === rsec);
       return [
-        el("h2", {}, "👁 Surveillance"),
-        el("div", { class: "card list" },
-          set("Surveillance des produits", d.on ? "Active : ton assistant lit tes produits suivis." : "En pause : plus rien n'est lu. Touche pour reprendre.",
-            el("button", { class: `small ${d.on ? "ghost" : "main"}`, onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Pause" : "▶ Reprendre"))),
-        el("h2", {}, "🛒 Achat"),
-        el("div", { class: "card list" },
-          set("Achat automatique", "Après ton ✅, ton assistant passe la commande. Coupé : la page s'ouvre pour finir à la main.", sw(settingOf("ab"), (v) => change("ab", v))),
-          set("Acheter depuis l'appli", "« ✅ Acheter » et « ⚡ Acheter » ici achètent, comme le ✅ du chat (3 au plus par 10 min). Coupé : seul le ✅ du chat achète.",
-            sw(appBuy, (v) => { if (v === (d.g.ap !== false)) delete changes.set.ap; else changes.set.ap = v; haptic("light"); render(); })),
-          set("Marge au-dessus du prix normal", mg < 0 ? "Coupée : ton max = le prix normal." : `Ton max = prix normal + ${mg} % (sauf « ton max » d'un produit).`,
-            el("div", { class: "row" }, margin, sw(mg >= 0, (v) => change("mg", v ? (d.g.mg >= 0 ? d.g.mg : 10) : -1))))),
-        el("h2", {}, "🔔 Alertes"),
-        el("div", { class: "card list" },
-          ...ALERTS.map(([title, hint], i) => set(title, hint, sw((al & (1 << i)) !== 0, (v) => change("al", v ? al | (1 << i) : al & ~(1 << i))))),
-          set("Son spécial", "le carillon sur l'ordinateur", sw(settingOf("so"), (v) => change("so", v)))),
-        el("h2", {}, "🖥 Affichage"),
-        el("div", { class: "card list" },
-          set("Affichage de l'appli", view === "simple" ? "Simple : 3 onglets (Accueil, Mes produits, Réglages)." : "Complet : tous les onglets (Suivis, Sorties, État…).",
-            el("div", { class: "seg2" }, ...[["simple", "Simple"], ["complete", "Complet"]].map(([id, label]) => el("button", { class: view === id ? "on" : null, onclick: () => setViewMode(id) }, label))))),
-        el("p", { class: "m", style: "margin:12px 4px" }, "Le reste (marchands, livraison, coffre, Discord) se règle dans le tableau de bord sur ton PC."),
+        el("div", { class: "row", style: "align-items:center;margin:0 0 8px" }, el("button", { class: "chip", onclick: () => { rsec = null; haptic("select"); render(); window.scrollTo(0, 0); } }, "‹ Réglages"), el("h2", { style: "margin:0 0 0 6px" }, `${icon} ${label}`)),
+        ...sectionBody(rsec),
+      ];
+    }
+
+    function sectionBody(id) {
+      const change = (key, value) => { if (value === d.g[key]) delete changes.set[key]; else changes.set[key] = value; haptic("light"); render(); };
+      if (id === "watch") {
+        return [el("div", { class: "card list" }, setRow("Surveillance des produits", d.on ? "Active : ton assistant lit tes produits suivis." : "En pause : plus rien n'est lu. Touche pour reprendre.",
+          el("button", { class: `small ${d.on ? "ghost" : "main"}`, onclick: () => send({ a: d.on ? "pause" : "resume" }) }, d.on ? "⏸ Pause" : "▶ Reprendre")))];
+      }
+      if (id === "notify") {
+        const al = settingOf("al");
+        return [el("div", { class: "card list" },
+          ...ALERTS.map(([title, hint], i) => setRow(title, hint, swEl((al & (1 << i)) !== 0, (v) => change("al", v ? al | (1 << i) : al & ~(1 << i))))),
+          setRow("Son spécial", "le carillon sur l'ordinateur", swEl(settingOf("so"), (v) => change("so", v)))),
+        el("p", { class: "m", style: "margin:8px 4px" }, "Les alertes arrivent dans Telegram et Discord ; « /pause » dans la conversation les met en silence pour quelques heures.")];
+      }
+      if (id === "buy") {
+        const mg = settingOf("mg");
+        const margin = el("input", { class: "euro", inputmode: "numeric", value: mg < 0 ? "" : String(mg), placeholder: "%", "aria-label": "Marge en pourcent", disabled: mg < 0 ? "" : null });
+        margin.addEventListener("change", () => {
+          const n = Number(margin.value.replace("%", "").trim());
+          if (!Number.isInteger(n) || n < 0 || n > 100) { alert("Marge : un nombre entier de 0 à 100."); margin.value = String(mg); return; }
+          change("mg", n);
+        });
+        const lim = d.lim;
+        return [
+          el("div", { class: "card list" },
+            setRow("Achat automatique", "Après ton ✅, ton assistant passe la commande. Coupé : la page s'ouvre pour finir à la main.", swEl(settingOf("ab"), (v) => change("ab", v))),
+            setRow("Acheter depuis l'appli", "« ✅ Acheter » et « ⚡ Acheter » ici achètent, comme le ✅ du chat (3 au plus par 10 min). Coupé : seul le ✅ du chat achète.", swEl(flag("ap"), toggleFlag("ap"))),
+            setRow("Marge au-dessus du prix normal", mg < 0 ? "Coupée : ton max = le prix normal." : `Ton max = prix normal + ${mg} % (sauf « ton max » d'un produit).`,
+              el("div", { class: "row" }, margin, swEl(mg >= 0, (v) => change("mg", v ? (d.g.mg >= 0 ? d.g.mg : 10) : -1))))),
+          el("h2", {}, "Automatismes"),
+          el("div", { class: "card list" },
+            setRow("Suivre tout seul les nouveaux produits", "Les produits des sorties que tu guettes sont suivis et proposés à l'achat (ton ✅ reste nécessaire).", swEl(flag("af"), toggleFlag("af"))),
+            setRow("Invitations Amazon", "Demander l'invitation quand la fiche en propose une, et te prévenir.", swEl(flag("ai"), toggleFlag("ai"))),
+            setRow("Préparer la page de paiement d'avance", "Dès qu'une demande part, la commande est menée jusqu'au paiement : ton ✅ ne fait que payer.", swEl(flag("se"), toggleFlag("se"))),
+            setRow("Se reconnecter en cours d'achat", "Si la session d'un marchand expire pendant un achat que tu as lancé.", swEl(flag("lo"), toggleFlag("lo")))),
+          lim === undefined ? null : el("h2", {}, "Plafonds (lecture)"),
+          lim === undefined ? null : el("div", { class: "card list" },
+            setRow("Par commande", "au plus", el("b", {}, euro0(lim.o))),
+            setRow("Par jour", "au plus", el("b", {}, euro0(lim.d))),
+            setRow("Livraison tolérée", "en plus du prix", el("b", {}, euro0(lim.s))),
+            setRow("Langues acceptées", "les autres sont écartées", el("b", {}, (lim.l || []).map((x) => LANGS[x] || x).join(", ") || "—"))),
+          lim === undefined ? null : el("p", { class: "m", style: "margin:8px 4px" }, "Les plafonds, la carte, la livraison et chaque marchand se règlent sur le PC : ils protègent ton argent, ils ne changent pas depuis le téléphone."),
+        ].filter((node) => node !== null);
+      }
+      if (id === "merchants") return merchantsBlock();
+      if (id === "vault") {
+        return [
+          el("div", { class: "card list" },
+            setRow("Coffre", d.v === true ? "Ouvert : ton assistant peut acheter et se reconnecter." : d.v === false ? "Fermé : rien ne s'achète tant qu'il est fermé." : "État inconnu (tableau de bord fermé).",
+              d.v === false && d.k ? el("button", { class: "small main", onclick: unlockSheet }, "🔓 Ouvrir") : el("b", {}, d.v === true ? "🟢" : "⚪")),
+            setRow("Carte du coffre", d.cv === 2 ? "En attente de ta validation dans l'appli de ta banque." : d.cv ? "Pas encore vérifiée chez Amazon." : "Aucune vérification en attente.", el("b", {}, d.cv ? "⚠️" : "✅"))),
+          ...(cardVerify() || []),
+          el("p", { class: "m", style: "margin:8px 4px" }, "La phrase du coffre part chiffrée pour ton assistant seul. Les identifiants des marchands se gèrent sur le PC."),
+        ];
+      }
+      if (id === "look") {
+        const view = simpleView() ? "simple" : "complete";
+        return [el("div", { class: "card list" }, setRow("Affichage de l'appli", view === "simple" ? "Simple : 3 onglets (Accueil, Mes produits, Réglages)." : "Complet : tous les onglets (Suivis, Sorties, État…).",
+          el("div", { class: "seg2" }, ...[["simple", "Simple"], ["complete", "Complet"]].map(([key, text]) => el("button", { class: view === key ? "on" : null, onclick: () => setViewMode(key) }, text)))))];
+      }
+      if (id === "status") return diagnosticBlock();
+      if (id === "stats") return statsBlock();
+      if (id === "friends" && d.ad) return admin();
+      return [];
+    }
+
+    function diagnosticBlock() {
+      const tone = { o: "ok", w: "warn", b: "no", m: "mute" };
+      return [
+        el("div", { class: "health-grid" }, ...(d.hc || []).map(([label, t, detail]) => el("div", { class: `card hcell ${tone[t] || "mute"}` },
+          el("div", { class: "hlabel" }, `${t === "o" ? "✅" : t === "w" ? "⚠️" : t === "b" ? "⛔" : "➖"} ${label}`), el("div", { class: "m" }, detail)))),
+        (d.hc || []).length === 0 ? el("div", { class: "card empty" }, "Pas encore de diagnostic : touche 🔄 Actualiser, ou mets ton assistant à jour.") : null,
+      ].filter((node) => node !== null);
+    }
+
+    function statsBlock() {
+      const list = d.ms || [];
+      const reads = list.reduce((n, m) => n + (m.rd || 0), 0);
+      const c = d.cx;
+      return [
+        el("div", { class: "stats" },
+          el("div", { class: "stat" }, el("b", {}, String(reads)), el("span", {}, "pages lues aujourd'hui")),
+          el("div", { class: "stat" }, el("b", {}, String(list.filter((m) => m.rd > 0).length)), el("span", {}, "marchands lus")),
+          el("div", { class: "stat" }, el("b", {}, c ? `${c.c.toFixed(2).replace(".", ",")} $` : "—"), el("span", {}, "captchas payés"))),
+        el("h2", {}, "🧩 Captchas résolus"),
+        c ? el("div", { class: "card list" },
+          setRow("Dépensé depuis le début", c.t ? `depuis le ${new Date(c.t).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}` : "", el("b", {}, `${c.c.toFixed(2).replace(".", ",")} $`)),
+          setRow("Résolus", "par 2captcha", el("b", {}, String(c.s))),
+          setRow("Échoués", "non facturés quand la tâche n'est pas résolue", el("b", {}, String(c.f))),
+          setRow("Taux de réussite", "résolus sur tentés", el("b", {}, c.s + c.f > 0 ? `${Math.round((100 * c.s) / (c.s + c.f))} %` : "—")))
+          : el("div", { class: "card empty" }, "Aucun captcha résolu pour l'instant."),
+        el("p", { class: "m", style: "margin:8px 4px" }, "Le solde restant et les courbes détaillées sont dans le tableau de bord sur ton PC (Réglages › Statistiques)."),
       ];
     }
 
@@ -648,16 +758,16 @@
      * sur un marchand ouvre sa fiche (avec ses courbes chez l'admin).
      */
     function stateView() {
+      return [el("h2", {}, "🩺 Tout est OK ?"), ...diagnosticBlock(), el("h2", {}, "🏬 Marchands", el("small", {}, `${(d.ms || []).length}`)), ...merchantsBlock()];
+    }
+    /** La liste des marchands surveillés (barre de comptage + une ligne par marchand), partagée par l'onglet État et la rubrique Marchands de Réglages. */
+    function merchantsBlock() {
       const tone = { o: "ok", w: "warn", b: "no", m: "mute" };
-      const list = (d.ms || []).slice().sort((a, b) => "bwmo".indexOf(a.t) - "bwmo".indexOf(b.t) || b.rd - a.rd);
+      const list = (d.ms || []).slice().sort((x, y) => "bwmo".indexOf(x.t) - "bwmo".indexOf(y.t) || y.rd - x.rd);
       const counts = { o: 0, w: 0, b: 0, m: 0 };
       for (const m of list) counts[m.t] = (counts[m.t] || 0) + 1;
       const full = (n) => (d.ad && d.ad.mc ? d.ad.mc.find((x) => x.n === n) : null);
       return [
-        el("h2", {}, "🩺 Tout est OK ?"),
-        el("div", { class: "health-grid" }, ...(d.hc || []).map(([label, t, detail]) => el("div", { class: `card hcell ${tone[t] || "mute"}` },
-          el("div", { class: "hlabel" }, `${t === "o" ? "✅" : t === "w" ? "⚠️" : t === "b" ? "⛔" : "➖"} ${label}`), el("div", { class: "m" }, detail)))),
-        el("h2", {}, "🏬 Marchands", el("small", {}, `${list.length}`)),
         list.length === 0 ? el("div", { class: "card empty" }, "Mets ton assistant à jour pour voir l'état des marchands ici.") : null,
         // Les chiffres disent ce qu'ils comptent (audit T6 : « 1 » vert et « 1 » rouge sans légende).
         list.length === 0 ? null : el("div", { class: "mbar" }, ...["o", "w", "b", "m"].filter((k) => counts[k] > 0).map((k) => {
@@ -667,7 +777,7 @@
         list.length === 0 ? null : el("div", { class: "card list" }, ...list.map((mc) => el("div", { class: "friend tap", onclick: () => merchantSheet(full(mc.n) || mc) },
           el("span", { class: "dot" }, FRIEND_DOT[mc.t] || "⚪"),
           el("div", { class: "grow" }, el("b", {}, mc.n), el("span", {}, mc.s), el("span", {}, `${mc.rd} page${mc.rd > 1 ? "s" : ""} lue${mc.rd > 1 ? "s" : ""} aujourd'hui`))))),
-      ];
+      ].filter((node) => node !== null);
     }
 
     function admin() {
@@ -721,7 +831,7 @@
       const simple = simpleView();
       const body = tab === "follows" ? (simple ? [...follows(), el("h2", {}, "📅 Sorties"), ...releases()] : follows())
         : tab === "releases" ? releases() : tab === "state" ? stateView()
-        : tab === "settings" ? (simple ? [...settings(), ...stateView(), ...(d.ad ? [el("h2", {}, "👑 Admin"), ...admin()] : [])] : settings())
+        : tab === "settings" ? settings()
         : tab === "admin" && d.ad ? admin() : home();
       app.replaceChildren(...[...header(), ...body].filter((node) => node !== null));
       footer();
