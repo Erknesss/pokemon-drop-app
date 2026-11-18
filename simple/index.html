@@ -97,6 +97,8 @@
     .stats.wrap { display: grid; gap: 8px; } .stats.wrap .stat { min-width: 0; padding: 10px 4px; } .filters.wrap { flex-wrap: wrap; overflow: visible; }
     .stat b.tone-ok { color: var(--ok); } .stat b.tone-warn, .tone-warn { color: var(--warn); } .stat b.tone-no, .tone-no { color: var(--no); }
     .ship { color: var(--hint); font-size: 12px; font-weight: 500; }
+    .bk-row { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); } .bk-row:last-of-type { border-bottom: 0; }
+    .bk-row input { width: 22px; height: 22px; flex: none; accent-color: var(--btn); } .bk-row .grow b { display: block; font-size: 14px; }
     .sentence { font-weight: 650; margin: 4px 4px 8px; }
     .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--hint); margin-top: 6px; } .legend span { display: inline-flex; align-items: center; gap: 5px; }
     .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
@@ -193,6 +195,8 @@
     const ALERTS = [["En stock", "retour en stock"], ["Précommande", "précommande ouverte"], ["Baisse de prix", "un produit suivi baisse"], ["Bientôt disponible", "fiche annoncée"], ["Épuisé", "plus en stock"], ["Blocage à résoudre", "captcha ou accès limité"]];
     /** La livraison à titre indicatif (frais vus à la page de paiement du marchand, `d.sh`) : « + livraison ≈ 7,90 € ». Elle change parfois le prix final (King Jouet : seulement en livraison). */
     const shipOf = (merchant) => { const c = d && d.sh ? d.sh[merchant] : undefined; return c === undefined ? "" : c === 0 ? "livraison offerte (vue)" : `+ livraison ≈ ${(c / 100).toFixed(c % 100 === 0 ? 0 : 2).replace(".", ",")} €`; };
+    /** Dans les phrases de confirmation d'achat : « (+ livraison ≈ 7,90 €) » quand le marchand en a une vue. */
+    const confirmShip = (merchant) => { const t = shipOf(merchant); return t === "" ? "" : ` (${t})`; };
     const shipSpan = (merchant) => { const t = shipOf(merchant); return t === "" ? null : el("span", { class: "ship", title: "Indicatif : les frais réels dépendent du panier et du mode de livraison" }, ` ${t}`); };
     const parseEuros = (text) => { const t = text.trim().replace(/\s|€/g, "").replace(",", "."); if (t === "") return null; const n = Number(t); return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 100) : undefined; };
 
@@ -268,7 +272,7 @@
       sheetOf(el("h3", {}, f.t), el("div", { class: "m" }, `${offers.length} offre${offers.length > 1 ? "s" : ""}${f.e ? ` · ${f.e}` : ""}`), f.ri ? el("div", { class: "m" }, `📅 Retour annoncé : ${f.ri}`) : null,
         el("div", { class: "scroll" }, ...offers.map(([m, c, st, w]) => el("div", { class: "offer" },
           el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, el("span", { class: `pill ${st}` }, STATE[st] || "?"), c === null ? "" : euros(c), shipSpan(m))),
-          w && (st === "I" || st === "P") && c !== null ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${f.t} » à ${euros(c)} chez ${m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w)) }, "⚡ Acheter") : null))),
+          w && (st === "I" || st === "P") && c !== null ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${f.t} » à ${euros(c)} chez ${m}${confirmShip(m)} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w)) }, "⚡ Acheter") : null))),
         el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page de l'offre la moins chère ›"));
     }
     /** TOUTES les offres achetables d'un produit (2026-11-02) : marchand, prix, « ⚡ Acheter » sur chacune ; la moins chère d'abord. */
@@ -276,7 +280,7 @@
       sheetOf(el("h3", {}, o.t), el("div", { class: "m" }, `${o.os.length} offres achetables à ton prix`),
         el("div", { class: "scroll" }, ...o.os.map(([m, c, w, pre]) => el("div", { class: "offer" },
           el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, pre ? el("span", { class: "pill P" }, "PRÉCO") : null, euros(c), shipSpan(m))),
-          el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(c)} chez ${m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w)) }, "⚡ Acheter")))),
+          el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(c)} chez ${m}${confirmShip(m)} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w)) }, "⚡ Acheter")))),
         el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, "voir la page de l'offre la moins chère ›"));
     }
     /** Le détail des marchands bloqués (2026-10-21). */
@@ -429,6 +433,44 @@
               el("button", { class: "small", style: "margin-top:8px", onclick: () => sendNow({ a: "payx", r: p.i }) }, "Ignorer"))))];
     }
 
+    /**
+     * ACHAT MULTIPLE (2026-11-18) : option (réglage « Achat multiple », coupé d'office). Les offres achetables sont classées PAR MARCHAND ; on coche plusieurs produits d'un même marchand (2 à 5) et un seul bouton
+     * les achète. Chacun garde ses garde-fous côté programme (budget, plafonds, un seul achat à la fois par produit) ; pour l'instant ils sont commandés l'un après l'autre, donc une livraison par commande.
+     */
+    const basketSel = new Set();
+    function basketCard() {
+      if (!d.g || d.g.mb !== true) return null;
+      const groups = new Map();
+      for (const o of d.o || []) {
+        const entries = o.os && o.os.length > 0 ? o.os : [[o.m, o.c, o.w, o.pre]];
+        for (const [m, c, w, pre] of entries) { if (!w) continue; if (!groups.has(m)) groups.set(m, []); groups.get(m).push({ t: o.t, c, w, pre }); }
+      }
+      const usable = [...groups].filter(([, list]) => list.length >= 2).sort((a, b) => b[1].length - a[1].length);
+      const out = [el("h2", {}, "🧺 Achat multiple", el("small", {}, String(usable.length)))];
+      const alive = new Set(usable.flatMap(([, list]) => list.map((x) => x.w)));
+      for (const w of [...basketSel]) if (!alive.has(w)) basketSel.delete(w);
+      if (usable.length === 0) {
+        out.push(el("div", { class: "card empty" }, "Rien à regrouper pour l'instant : il faut au moins 2 produits achetables chez le même marchand."));
+        return out;
+      }
+      out.push(el("p", { class: "m", style: "margin:0 4px 8px" }, "Coche plusieurs produits d'un même marchand (2 à 5) puis achète-les d'un geste. Chaque produit garde ses garde-fous ; pour l'instant ils sont commandés l'un après l'autre (une livraison par commande)."));
+      for (const [m, list] of usable) {
+        const chosen = list.filter((x) => basketSel.has(x.w));
+        const total = chosen.reduce((n, x) => n + x.c, 0);
+        const ship = d.sh && d.sh[m] !== undefined ? d.sh[m] : null;
+        const rows = list.map((x) => el("label", { class: "bk-row" },
+          el("input", { type: "checkbox", checked: basketSel.has(x.w), onchange: (e) => { if (e.target.checked) { if (chosen.length >= 5) { e.target.checked = false; alert("5 produits au plus par panier."); return; } basketSel.add(x.w); } else basketSel.delete(x.w); haptic("light"); render(); } }),
+          el("div", { class: "grow" }, el("b", {}, x.t), el("span", { class: "m" }, x.pre ? "PRÉCO · " : "", euros(x.c)))));
+        const n = chosen.length;
+        out.push(el("div", { class: "card" },
+          el("div", { class: "title" }, m, el("small", {}, ` ${list.length} produits`)),
+          ...rows,
+          el("div", { class: "m", style: "margin-top:6px" }, n === 0 ? "Aucun produit coché." : `${n} coché${n > 1 ? "s" : ""} · ${euros(total)}${ship !== null && ship > 0 ? ` + livraison ≈ ${(ship / 100).toFixed(ship % 100 === 0 ? 0 : 2).replace(".", ",")} € par commande (indicatif)` : ""}`),
+          el("button", { class: "big buy", style: "margin-top:8px;width:100%", disabled: n < 2 ? "" : null, onclick: () => confirmThen(`Acheter ${n} produits chez ${m} (${euros(total)}) ? Chacun passe par ses garde-fous et part tout de suite, l'un après l'autre.`, () => sendNow({ a: "basket", ws: chosen.map((x) => x.w) })) }, n < 2 ? "Coche au moins 2 produits" : `🧺 Acheter la sélection (${n})`)));
+      }
+      return out;
+    }
+
     function home() {
       const reqs = (d.p || []).filter((r) => r.e > Date.now());
       const offers = d.o || [];
@@ -452,7 +494,7 @@
             el("div", { class: "t" }, n.t),
             el("div", { class: "p" }, n.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, n.c === null ? "prix à voir" : euros(n.c), shipSpan(n.m)),
             el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(n.u); } }, `${n.m} · voir la page ›`)),
-          el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${n.t} »${n.c === null ? "" : ` à ${euros(n.c)}`} chez ${n.m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => sendNow({ a: "quick", q: n.q })) },
+          el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${n.t} »${n.c === null ? "" : ` à ${euros(n.c)}`} chez ${n.m}${confirmShip(n.m)} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => sendNow({ a: "quick", q: n.q })) },
             "⚡ Acheter")))),
         el("h2", {}, "🔥 Achetable maintenant à ton prix"),
         offers.length === 0 ? el("div", { class: "card empty" }, "Rien en stock dans ton budget pour l'instant.") : null,
@@ -466,7 +508,8 @@
               ? el("div", { class: "m" }, ...o.os.slice(0, 3).map(([m, c]) => el("div", {}, `${m} · ${euros(c)}`, shipSpan(m))), o.os.length > 3 ? el("div", {}, `+ ${o.os.length - 3} autre(s)`) : null,
                 el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); offersSheet(o); } }, `${o.os.length} offres · voir et choisir ›`))
               : el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, `${o.m} · voir la page ›`)),
-          o.w && !(o.os && o.os.length > 1) ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(o.c)} chez ${o.m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(o.w)) }, "⚡ Acheter") : null))),
+          o.w && !(o.os && o.os.length > 1) ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(o.c)} chez ${o.m}${confirmShip(o.m)} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(o.w)) }, "⚡ Acheter") : null))),
+        ...(basketCard() || []),
         (d.r || []).length > 0 ? el("h2", {}, "📅 Prochaines sorties guettées") : null,
         (d.r || []).length > 0 ? el("div", { class: "card list" }, ...d.r.map((r) => {
           const days = Math.round((r.d - new Date().setHours(0, 0, 0, 0)) / 86400000);
@@ -652,6 +695,8 @@
           el("div", { class: "card list" },
             setRow("Achat automatique", "Après ton ✅, ton assistant passe la commande. Coupé : la page s'ouvre pour finir à la main.", swEl(settingOf("ab"), (v) => change("ab", v))),
             setRow("Acheter depuis l'appli", "« ✅ Acheter » et « ⚡ Acheter » ici achètent, comme le ✅ du chat (3 au plus par 10 min). Coupé : seul le ✅ du chat achète.", swEl(flag("ap"), toggleFlag("ap"))),
+            setRow("Achat multiple", "Allume la section « Achat multiple » de l'Accueil : tu coches plusieurs produits d'un même marchand et tu les achètes d'un geste. Chaque produit garde ses garde-fous. Coupé d'office.",
+              swEl("mb" in changes.set ? changes.set.mb : d.g.mb === true, (v) => { if (v === (d.g.mb === true)) delete changes.set.mb; else changes.set.mb = v; haptic("light"); render(); })),
             setRow("Marge au-dessus du prix normal", mg < 0 ? "Coupée : ton max = le prix normal." : `Ton max = prix normal + ${mg} % (sauf « ton max » d'un produit).`,
               el("div", { class: "row" }, margin, swEl(mg >= 0, (v) => change("mg", v ? (d.g.mg >= 0 ? d.g.mg : 10) : -1))))),
           el("h2", {}, "Automatismes"),
