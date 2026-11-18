@@ -96,6 +96,7 @@
     /* Statistiques (2026-11-18) */
     .stats.wrap { display: grid; gap: 8px; } .stats.wrap .stat { min-width: 0; padding: 10px 4px; } .filters.wrap { flex-wrap: wrap; overflow: visible; }
     .stat b.tone-ok { color: var(--ok); } .stat b.tone-warn, .tone-warn { color: var(--warn); } .stat b.tone-no, .tone-no { color: var(--no); }
+    .ship { color: var(--hint); font-size: 12px; font-weight: 500; }
     .sentence { font-weight: 650; margin: 4px 4px 8px; }
     .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--hint); margin-top: 6px; } .legend span { display: inline-flex; align-items: center; gap: 5px; }
     .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
@@ -165,15 +166,17 @@
     const ago = (at) => { const min = Math.round((Date.now() - at) / 60000); return min < 1 ? "à l'instant" : min < 60 ? `il y a ${min} min` : min < 48 * 60 ? `il y a ${Math.round(min / 60)} h` : `il y a ${Math.round(min / 1440)} j`; };
     const haptic = (kind) => { try { tg && tg.HapticFeedback && (kind === "select" ? tg.HapticFeedback.selectionChanged() : tg.HapticFeedback.impactOccurred(kind)); } catch (e) { /* sans vibreur */ } };
     // Ouvert depuis un bouton du CLAVIER (seul cas où Telegram transmet le choix au bot) : initData y est vide, la plateforme, elle, est connue.
+    // Ouverte par le bouton de menu (« 📱 Tableau hh:mm »), l'appli ne peut rien renvoyer au bot : « Actualiser » ne part pas. Ce bouton-là est déjà tenu à jour par le programme (au plus toutes les 90 s) : il suffit de le rouvrir.
+    const REFRESH_LOST = "Actualiser ne marche pas depuis ce bouton (Telegram ne laisse pas cette ouverture parler au bot). Ferme l'appli puis rouvre « 📱 Tableau hh:mm » : il est tenu à jour tout seul. Ou tape /tableau dans la conversation.";
     const canSend = () => !!(tg && typeof tg.sendData === "function" && tg.platform && tg.platform !== "unknown");
     /** Un choix renvoyé au bot de la personne (lu par son extension). L'appli se ferme ensuite. */
-    const send = (action) => {
+    const send = (action, lostText) => {
       if (!canSend()) { alert("Ouvre « Mon tableau » depuis le bouton en bas de ta conversation avec ton bot : c'est lui qui transmet ton choix."); return; }
       haptic("medium");
       tg.sendData(JSON.stringify(action));
       // Envoyé depuis le bouton du clavier, Telegram ferme l'appli aussitôt. Si elle est encore là 2,5 s après, le choix n'est PAS parti (appli ouverte par le bouton de menu ou un lien) : on le dit.
       setTimeout(() => {
-        const lost = "Ton choix n'est pas parti : l'appli n'est pas ouverte par le bon bouton. Ferme-la, puis rouvre-la avec le bouton « 📱 Mon tableau » en bas de ta conversation avec le bot (pas le bouton de menu).";
+        const lost = lostText || "Ton choix n'est pas parti : l'appli n'est pas ouverte par le bon bouton. Ferme-la, puis rouvre-la avec le bouton « 📱 Mon tableau » en bas de ta conversation avec le bot (pas le bouton de menu).";
         if (typeof tg.showAlert === "function") tg.showAlert(lost); else alert(lost);
       }, 2500);
     };
@@ -188,6 +191,9 @@
     // R : en stock mais au-dessus de ton budget (revendeur) ; U : état pas sûr (pas relu depuis 20 min, lectures en échec, ou prix très sous le prix normal : peut-être une autre offre) (2026-11-10).
     const STATE = { I: "En stock", P: "Précommande", R: "Prix trop haut", S: "Bientôt", O: "Épuisé", U: "À vérifier" };
     const ALERTS = [["En stock", "retour en stock"], ["Précommande", "précommande ouverte"], ["Baisse de prix", "un produit suivi baisse"], ["Bientôt disponible", "fiche annoncée"], ["Épuisé", "plus en stock"], ["Blocage à résoudre", "captcha ou accès limité"]];
+    /** La livraison à titre indicatif (frais vus à la page de paiement du marchand, `d.sh`) : « + livraison ≈ 7,90 € ». Elle change parfois le prix final (King Jouet : seulement en livraison). */
+    const shipOf = (merchant) => { const c = d && d.sh ? d.sh[merchant] : undefined; return c === undefined ? "" : c === 0 ? "livraison offerte (vue)" : `+ livraison ≈ ${(c / 100).toFixed(c % 100 === 0 ? 0 : 2).replace(".", ",")} €`; };
+    const shipSpan = (merchant) => { const t = shipOf(merchant); return t === "" ? null : el("span", { class: "ship", title: "Indicatif : les frais réels dépendent du panier et du mode de livraison" }, ` ${t}`); };
     const parseEuros = (text) => { const t = text.trim().replace(/\s|€/g, "").replace(",", "."); if (t === "") return null; const n = Number(t); return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 100) : undefined; };
 
     async function decode(hash) {
@@ -261,7 +267,7 @@
       const offers = f.os && f.os.length > 0 ? f.os : [[f.m, f.c === undefined ? null : f.c, f.st, null]];
       sheetOf(el("h3", {}, f.t), el("div", { class: "m" }, `${offers.length} offre${offers.length > 1 ? "s" : ""}${f.e ? ` · ${f.e}` : ""}`), f.ri ? el("div", { class: "m" }, `📅 Retour annoncé : ${f.ri}`) : null,
         el("div", { class: "scroll" }, ...offers.map(([m, c, st, w]) => el("div", { class: "offer" },
-          el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, el("span", { class: `pill ${st}` }, STATE[st] || "?"), c === null ? "" : euros(c))),
+          el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, el("span", { class: `pill ${st}` }, STATE[st] || "?"), c === null ? "" : euros(c), shipSpan(m))),
           w && (st === "I" || st === "P") && c !== null ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${f.t} » à ${euros(c)} chez ${m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w)) }, "⚡ Acheter") : null))),
         el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(f.u); } }, "voir la page de l'offre la moins chère ›"));
     }
@@ -269,7 +275,7 @@
     function offersSheet(o) {
       sheetOf(el("h3", {}, o.t), el("div", { class: "m" }, `${o.os.length} offres achetables à ton prix`),
         el("div", { class: "scroll" }, ...o.os.map(([m, c, w, pre]) => el("div", { class: "offer" },
-          el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, pre ? el("span", { class: "pill P" }, "PRÉCO") : null, euros(c))),
+          el("div", { class: "grow" }, el("b", {}, m), el("div", { class: "m" }, pre ? el("span", { class: "pill P" }, "PRÉCO") : null, euros(c), shipSpan(m))),
           el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(c)} chez ${m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(w)) }, "⚡ Acheter")))),
         el("a", { class: "m", style: "display:block;margin-top:8px", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, "voir la page de l'offre la moins chère ›"));
     }
@@ -331,7 +337,7 @@
         // « 🔄 Actualiser » (2026-10-21) : un bouton « Mon tableau » neuf arrive tout de suite (1 à 2 s), à rouvrir. Un tableau ancien : dit sur la même ligne (audit T4).
         el("header", {}, el("div", { class: "logo" }, "⚡"), el("div", { class: "grow" }, el("h1", {}, "Mon tableau"),
           el("div", { class: old ? "sub warn" : "sub" }, old ? `⚠ vieux de ${ago(d.at).replace("il y a ", "")} · touche 🔄` : `${d.n ? d.n + " · " : ""}mis à jour ${ago(d.at)}`)),
-          el("button", { class: "chip", title: "Demander un tableau neuf", onclick: () => send({ a: "refresh" }) }, "🔄 Actualiser")),
+          el("button", { class: "chip", title: "Demander un tableau neuf", onclick: () => send({ a: "refresh" }, REFRESH_LOST) }, "🔄 Actualiser")),
         statusChips(),
         el("nav", { class: `tabs ${tabs.length === 3 ? "three" : tabs.length === 6 ? "six" : "five"}` }, ...tabs.map(([id, label, n]) =>
           el("button", { class: tab === id ? "on" : null, onclick: () => { tab = id; if (id === "settings") rsec = null; haptic("select"); render(); window.scrollTo(0, 0); } }, label, n > 0 ? el("span", { class: "dot" }, n) : null))),
@@ -430,7 +436,7 @@
         reqs.length > 0 ? el("h2", {}, `🛒 Demandes d'achat`, el("small", {}, `${reqs.length}`)) : null,
         ...reqs.map((r) => el("div", { class: "card req" },
           el("div", { class: "title" }, r.t),
-          el("div", { class: "meta" }, `${r.m}${r.pr ? " · " + r.pr : ""} · réponds dans ${Math.max(1, Math.round((r.e - Date.now()) / 60000))} min`),
+          el("div", { class: "meta" }, `${r.m}${r.pr ? " · " + r.pr : ""}${shipOf(r.m) ? " " + shipOf(r.m) : ""} · réponds dans ${Math.max(1, Math.round((r.e - Date.now()) / 60000))} min`),
           el("div", { class: "row" },
             el("button", { class: "big buy", onclick: () => decide(r.i, "buy") }, "✅ Acheter"),
             el("button", { class: "big no", onclick: () => decide(r.i, "refuse") }, "❌ Refuser")),
@@ -444,7 +450,7 @@
         ...(d.nq || []).map((n) => el("div", { class: "card" }, el("div", { class: "item" },
           el("div", { class: "grow" },
             el("div", { class: "t" }, n.t),
-            el("div", { class: "p" }, n.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, n.c === null ? "prix à voir" : euros(n.c)),
+            el("div", { class: "p" }, n.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, n.c === null ? "prix à voir" : euros(n.c), shipSpan(n.m)),
             el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(n.u); } }, `${n.m} · voir la page ›`)),
           el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${n.t} »${n.c === null ? "" : ` à ${euros(n.c)}`} chez ${n.m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => sendNow({ a: "quick", q: n.q })) },
             "⚡ Acheter")))),
@@ -454,10 +460,10 @@
           thumb(o.img),
           el("div", { class: "grow" },
             el("div", { class: "t" }, o.t),
-            el("div", { class: "p" }, o.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, o.os && o.os.length > 1 ? `dès ${euros(o.c)}` : euros(o.c)),
+            el("div", { class: "p" }, o.pre ? el("span", { class: "pill P" }, "PRÉCO") : null, o.os && o.os.length > 1 ? `dès ${euros(o.c)}` : euros(o.c), o.os && o.os.length > 1 ? null : shipSpan(o.m)),
             // Plusieurs offres : un tap montre CHAQUE marchand avec son prix (et « ⚡ Acheter » sur chacune) au lieu d'ouvrir seulement la moins chère.
             o.os && o.os.length > 1
-              ? el("div", { class: "m" }, ...o.os.slice(0, 3).map(([m, c]) => el("div", {}, `${m} · ${euros(c)}`)), o.os.length > 3 ? el("div", {}, `+ ${o.os.length - 3} autre(s)`) : null,
+              ? el("div", { class: "m" }, ...o.os.slice(0, 3).map(([m, c]) => el("div", {}, `${m} · ${euros(c)}`, shipSpan(m))), o.os.length > 3 ? el("div", {}, `+ ${o.os.length - 3} autre(s)`) : null,
                 el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); offersSheet(o); } }, `${o.os.length} offres · voir et choisir ›`))
               : el("a", { class: "m", href: "#", onclick: (e) => { e.preventDefault(); open(o.u); } }, `${o.m} · voir la page ›`)),
           o.w && !(o.os && o.os.length > 1) ? el("button", { class: "small buy", onclick: () => confirmThen(`Acheter « ${o.t} » à ${euros(o.c)} chez ${o.m} ? L'achat part tout de suite (mêmes garde-fous qu'un ✅).`, () => pickBuyNow(o.w)) }, "⚡ Acheter") : null))),
@@ -690,7 +696,7 @@
       return [
         el("div", { class: "health-grid" }, ...(d.hc || []).map(([label, t, detail]) => el("div", { class: `card hcell ${tone[t] || "mute"}` },
           el("div", { class: "hlabel" }, `${t === "o" ? "✅" : t === "w" ? "⚠️" : t === "b" ? "⛔" : "➖"} ${label}`), el("div", { class: "m" }, detail)))),
-        (d.hc || []).length === 0 ? el("div", { class: "card empty" }, "Pas encore de diagnostic : touche 🔄 Actualiser, ou mets ton assistant à jour.") : null,
+        (d.hc || []).length === 0 ? el("div", { class: "card empty" }, "Pas encore de diagnostic : ferme l'appli et rouvre « 📱 Tableau hh:mm », ou mets ton assistant à jour.") : null,
       ].filter((node) => node !== null);
     }
 
@@ -856,7 +862,7 @@
           el("div", { class: "stats" },
             el("div", { class: "stat" }, el("b", {}, String(list.reduce((n, m) => n + (m.rd || 0), 0))), el("span", {}, "pages lues aujourd'hui")),
             el("div", { class: "stat" }, el("b", {}, c ? `${c.c.toFixed(2).replace(".", ",")} $` : "—"), el("span", {}, "captchas payés"))),
-          el("p", { class: "m", style: "margin:8px 4px" }, "Les statistiques complètes (santé, tableaux par marchand, captchas, partage) arrivent avec la mise à jour de ton programme ; si elles manquent encore, le lien était trop long : touche 🔄 Actualiser."),
+          el("p", { class: "m", style: "margin:8px 4px" }, "Les statistiques complètes (santé, tableaux par marchand, captchas, partage) arrivent avec la mise à jour de ton programme ; si elles manquent encore, ferme l'appli et rouvre le bouton « 📱 Tableau hh:mm » (il est tenu à jour tout seul)."),
         ];
       }
       const pages = [["health", "Santé"], ["merchants", "Marchands"], ["pages", "Pages lues"], ["captchas", "Captchas"], ["share", "Partage"]];
